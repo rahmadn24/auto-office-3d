@@ -48,4 +48,26 @@ export default tseslint.config(
       'prefer-const': 'error',
     },
   },
+  {
+    // Skrip util (mis. scripts/trigger-run.mjs) berjalan di Node — global runtime Node.
+    files: ['**/*.mjs', '**/*.js'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        URL: 'readonly',
+        fetch: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      eqeqeq: ['error', 'smart'],
+      'no-var': 'error',
+      'prefer-const': 'error',
+    },
+  },
 );
