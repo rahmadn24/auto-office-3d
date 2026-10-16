@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode } from 'react';
 
 import { ConnectionBadge } from '@/components/overlays/AgentStream';
+import { FounderCommandBar } from '@/components/shell/FounderCommandBar';
 import { formatTokens } from '@/lib/format';
 import { useBrain } from '@/store/brainStore';
 
@@ -128,9 +129,12 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
       {/* ── Konten view (isi flex) ── */}
       <main className="relative min-h-0 flex-1">{children}</main>
 
+      {/* ── Founder Command — PRD §3.1 (satu-satunya input manusia, semua tab) ── */}
+      <FounderCommandBar />
+
       {/* ── Footer (identik antar tab) ── */}
       <footer className="flex shrink-0 items-center justify-between border-t border-white/8 bg-surface-container-low/60 px-4 py-1 font-mono text-label-xs uppercase tracking-widest text-tertiary backdrop-blur-sm">
-        <span>Autonomous Command · Brain → Theater</span>
+        <span>Founder Prompt ⇄ Brain · Autonomous Loop</span>
         <span className="hidden sm:inline">Milestone #1–#5</span>
       </footer>
 

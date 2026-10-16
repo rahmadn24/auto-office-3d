@@ -36,10 +36,31 @@ export interface FeedItem {
 type TargetZoneAlias = AgentStatusPayload['targetZone'];
 
 const MAX_FEED = 200;
+const MAX_DIRECTIVES = 8;
 const STALE_MS = 5_000;
 
 let feedSeq = 0;
 const nextFeedId = (): string => `f${(feedSeq += 1)}`;
+let directiveSeq = 0;
+const nextDirectiveId = (): string => `d${(directiveSeq += 1)}`;
+
+/** Jam lokal HH:MM:SS.mmm — format sama dengan timestamp brain. */
+export function clockLabel(at: number): string {
+  const d = new Date(at);
+  const p = (n: number, len = 2): string => String(n).padStart(len, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
+
+/** Satu baris riwayat Founder Prompt (PRD §3.1: satu-satunya input manusia). */
+export interface DirectiveRecord {
+  id: string;
+  prompt: string;
+  at: number;
+  tsLabel: string;
+  /** 'queued' = ack brain diterima; 'failed' = nack / offline / timeout. */
+  status: 'queued' | 'failed';
+  error?: string;
+}
 
 /**
  * Parse `timestamp` brain (HH:MM:SS.mmm, jam lokal) ke epoch ms hari ini.
@@ -129,6 +150,8 @@ interface BrainStore {
   control: { haltedAll: boolean; runIds: string[] } | null;
   /** Bundel hasil run terakhir (PRD + berkas + QA) untuk viewer Artifacts. */
   artifacts: ArtifactsPayload | null;
+  /** Riwayat Founder Prompt yang dikirim dari UI (terbaru di depan, maks 8). */
+  directives: DirectiveRecord[];
 
   setConnection(status: ConnectionStatus): void;
   setPing(ms: number): void;
@@ -151,6 +174,8 @@ interface BrainStore {
   applyControl(c: { haltedAll: boolean; runIds: string[] }): void;
   /** Terapkan bundel artifacts:ready (viewer Artifacts & PRD). */
   applyArtifacts(payload: ArtifactsPayload): void;
+  /** Catat satu Founder Prompt di riwayat + feed (kind: system). */
+  pushDirective(prompt: string, status: 'queued' | 'failed', error?: string): void;
   /** Hapus semua baris feed (tombol CLEAR FEED). */
   clearFeed(): void;
   /** Kosongkan stream retrieval (tombol FlushState). */
@@ -216,6 +241,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
   memorySizes: {},
   control: null,
   artifacts: null,
+  directives: [],
 
   setConnection: (connection) => set({ connection }),
   setPing: (pingMs) => set({ pingMs }),
@@ -308,6 +334,38 @@ export const useBrain = create<BrainStore>((set, get) => ({
   applyControl: (c) => set({ control: c }),
 
   applyArtifacts: (payload) => set({ artifacts: payload }),
+
+  pushDirective: (prompt, status, error) => {
+    const at = Date.now();
+    const rec: DirectiveRecord = {
+      id: nextDirectiveId(),
+      prompt,
+      at,
+      tsLabel: clockLabel(at),
+      status,
+      error,
+    };
+    const s = get();
+    // Riwayat di Agent Stream (kind: system) — operator melihat prompt-nya
+    // beserta hasil ack (queued/failed) sebagai satu baris feed.
+    const item: FeedItem = {
+      id: nextFeedId(),
+      agentId: 'founder_agent',
+      division: 'Founder',
+      action: 'founder:directive',
+      targetZone: 'founder_desk',
+      detail: status === 'queued' ? prompt : `${prompt} · ${error ?? 'failed'}`,
+      at,
+      tsLabel: rec.tsLabel,
+      runId: s.runId ?? '—',
+      kind: 'system',
+    };
+    set({
+      directives: [rec, ...s.directives].slice(0, MAX_DIRECTIVES),
+      feed: [item, ...s.feed].slice(0, MAX_FEED),
+      lastEventAt: at,
+    });
+  },
 
   applyDeploy: (payload) => {
     const s = get();

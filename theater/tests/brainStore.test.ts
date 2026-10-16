@@ -62,6 +62,7 @@ beforeEach(() => {
     deploy: null,
     revenue: null,
     social: [],
+    directives: [],
   });
 });
 
@@ -338,5 +339,37 @@ describe('brainStore: hydrateSnapshot Fase 5', () => {
     expect(s.memorySizes['pm-memory']).toBe(2);
     expect(s.control?.haltedAll).toBe(false);
     expect(s.artifacts?.runId).toBe('run_x');
+  });
+});
+
+describe('brainStore: pushDirective (Founder Prompt, Fase 6)', () => {
+  it('mencatat riwayat + mendorong baris system ke feed', () => {
+    useBrain.getState().pushDirective('bangun landing page SaaS', 'queued');
+    const s = useBrain.getState();
+    expect(s.directives).toHaveLength(1);
+    expect(s.directives[0]?.prompt).toBe('bangun landing page SaaS');
+    expect(s.directives[0]?.status).toBe('queued');
+    expect(s.directives[0]?.tsLabel).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+    const sys = s.feed.find((f) => f.kind === 'system');
+    expect(sys?.action).toBe('founder:directive');
+    expect(sys?.detail).toBe('bangun landing page SaaS');
+    expect(sys?.agentId).toBe('founder_agent');
+  });
+
+  it('directive gagal menyimpan pesan error di riwayat & feed', () => {
+    useBrain.getState().pushDirective('coba lagi', 'failed', 'brain offline');
+    const s = useBrain.getState();
+    expect(s.directives[0]?.status).toBe('failed');
+    expect(s.directives[0]?.error).toBe('brain offline');
+    expect(s.feed[0]?.detail).toContain('brain offline');
+  });
+
+  it('riwayat terbatas 8 terbaru (terbaru di depan)', () => {
+    for (let i = 0; i < 10; i++) {
+      useBrain.getState().pushDirective(`prompt ${i}`, 'queued');
+    }
+    const s = useBrain.getState();
+    expect(s.directives).toHaveLength(8);
+    expect(s.directives[0]?.prompt).toBe('prompt 9');
   });
 });

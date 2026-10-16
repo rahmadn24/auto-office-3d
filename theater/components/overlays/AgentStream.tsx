@@ -6,6 +6,7 @@ import { GLASS_STRONG } from '@/lib/ui';
 import { useBrain } from '@/store/brainStore';
 
 const DIVISION_ACCENT: Record<string, string> = {
+  Founder: '#6366f1',
   Product: '#818cf8',
   Engineering: '#10b981',
   QA: '#06b6d4',

@@ -264,6 +264,31 @@ export function simulateWebhook(runId?: string): void {
   socket?.emit('stripe:simulate', { runId: runId ?? 'simulated_run' });
 }
 
+/**
+ * FOUNDER PROMPT (PRD §3.1) — kirim satu directive founder ke Brain
+ * (`founder:directive`). Mengembalikan hasil ack: `{ ok: true }` bila Brain
+ * menerima & menjalankan run autonomous; `{ ok: false, error }` bila socket
+ * tidak tersambung / prompt kosong / nack.
+ */
+export async function sendFounderDirective(
+  prompt: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const text = prompt.trim();
+  if (!text) return { ok: false, error: 'empty directive' };
+  if (!socket || !socket.connected) {
+    return { ok: false, error: 'brain offline — sambungkan socket dulu' };
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (5s)' }), 5000);
+    socket?.emit('founder:directive', text, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; error?: unknown } | null;
+      if (a && a.ok === true) resolve({ ok: true });
+      else resolve({ ok: false, error: typeof a?.error === 'string' ? a.error : 'nack' });
+    });
+  });
+}
+
 /** LOOP CONTROLS — HALT/RESUME seluruh graph (PRD §3.2). */
 export function setGraphHalt(halted: boolean, runId?: string): void {
   socket?.emit(halted ? 'control:halt' : 'control:resume', { runId });
