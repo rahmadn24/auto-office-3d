@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 
 import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
+import { PerfOverlay } from '../components/overlays/PerfOverlay';
 
 const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
   ssr: false,
@@ -23,6 +24,7 @@ export default function HomePage(): ReactNode {
     <main className="fixed inset-0 overflow-hidden bg-canvas-base">
       <OfficeScene />
       <CelebrationOverlay />
+      <PerfOverlay />
     </main>
   );
 }

@@ -13,6 +13,7 @@ import { Agents } from './agents/Agents';
 import { CameraRig } from './CameraRig';
 import { Confetti } from './Confetti';
 import { DemoDirector } from './DemoDirector';
+import { PerfProbe } from './PerfProbe';
 
 /**
  * Viewport 3D isometrik — PRD §4.1 & §4.3:
@@ -64,6 +65,7 @@ export default function OfficeScene(): ReactNode {
       <Agents />
       <Confetti />
       <DemoDirector />
+      <PerfProbe />
 
       <CameraRig />
     </Canvas>

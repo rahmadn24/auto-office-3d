@@ -120,3 +120,52 @@ describe('preset kamera', () => {
     expect(useOffice.getState().cameraPreset).toBe('orbit');
   });
 });
+
+describe('beban: 5 agen walking simultan (AC kartu Performance)', () => {
+  it('state tetap terisolasi per agen saat 5 berjalan bersamaan', () => {
+    const walkers = AGENT_ROSTER.slice(0, 5); // 5 dari 6 agen
+    walkers.forEach((entry, i) => {
+      useOffice.getState().walkTo(entry.id, [i, 0.4, -i], i % 2 === 0 ? 'CELEBRATE' : 'IDLE');
+    });
+
+    // Agen ke-6 tidak ikut berjalan
+    const spectator = AGENT_ROSTER[5];
+    if (!spectator) throw new Error('roster harus punya 6 agen');
+    expect(useOffice.getState().agents[spectator.id].state).toBe('IDLE');
+
+    // Tiba dalam urutan acak — tidak boleh saling menimpa
+    const shuffled = [...walkers].reverse();
+    shuffled.forEach((entry, i) => {
+      const idx = walkers.indexOf(entry);
+      useOffice.getState().arrive(entry.id);
+      const runtime = useOffice.getState().agents[entry.id];
+      expect(runtime.state).toBe(idx % 2 === 0 ? 'CELEBRATE' : 'IDLE');
+      expect(runtime.target).toBeUndefined();
+
+      // Agen yang belum tiba masih WALKING (state tidak tercampur)
+      const notArrived = shuffled.slice(i + 1);
+      for (const pending of notArrived) {
+        expect(useOffice.getState().agents[pending.id].state).toBe('WALKING');
+      }
+    });
+
+    expect(useOffice.getState().celebrating).toBe(true);
+  });
+
+  it('semua agen bisa berjalan pulang serentak tanpa residu state', () => {
+    for (const entry of AGENT_ROSTER) {
+      useOffice.getState().walkTo(entry.id, [0, 0.4, 0], 'CELEBRATE');
+    }
+    for (const entry of AGENT_ROSTER) useOffice.getState().arrive(entry.id);
+    useOffice.getState().resetHome();
+    for (const entry of AGENT_ROSTER) useOffice.getState().arrive(entry.id);
+
+    const { agents } = useOffice.getState();
+    for (const entry of AGENT_ROSTER) {
+      expect(agents[entry.id].state).toBe('IDLE');
+      expect(agents[entry.id].target).toBeUndefined();
+      expect(agents[entry.id].pending).toBeUndefined();
+    }
+    expect(useOffice.getState().celebrating).toBe(false);
+  });
+});
