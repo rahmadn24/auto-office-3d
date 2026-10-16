@@ -2,8 +2,10 @@ import { z } from 'zod';
 
 import type {
   AgentStatusPayload,
+  ArtifactsPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
 } from '../types';
@@ -181,4 +183,52 @@ export function parseSocialPost(raw: unknown): ContractParse<SocialPostPayload> 
   const parsed = SocialPostSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
   return { ok: true, payload: parsed.data as SocialPostPayload };
+}
+
+/** `memory:retrieval` — stream ingatan semantik (skor cosine) untuk Vector DB inspector. */
+export const MemoryRetrievalSchema = z.object({
+  runId: z.string().min(1),
+  namespace: z.string().min(1),
+  query: z.string(),
+  topId: z.string().nullable(),
+  topScore: z.number().min(-1).max(1),
+  hits: z.number().nonnegative(),
+  timestamp: z.string().min(1),
+});
+
+export function parseMemoryRetrieval(raw: unknown): ContractParse<MemoryRetrievalPayload> {
+  const parsed = MemoryRetrievalSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
+  return { ok: true, payload: parsed.data as MemoryRetrievalPayload };
+}
+
+/** `artifacts:ready` — bundel hasil run untuk viewer Artifacts & PRD (Fase 5). */
+export const ArtifactFileDiffSchema = z.object({
+  status: z.enum(['created', 'modified', 'deleted', 'unchanged']),
+  added: z.number().nonnegative(),
+  removed: z.number().nonnegative(),
+});
+
+export const ArtifactsSchema = z.object({
+  runId: z.string().min(1),
+  projectName: z.string(),
+  prd: z.string(),
+  files: z.array(
+    z.object({ path: z.string().min(1), content: z.string(), diff: ArtifactFileDiffSchema }),
+  ),
+  qaSummary: z.string(),
+  qaPassed: z.boolean(),
+  cycles: z.number().nonnegative(),
+  maxCycles: z.number().positive(),
+  tokensUsed: z.number().nonnegative(),
+  liveUrl: z.string(),
+  repoUrl: z.string(),
+  durationMs: z.number().nonnegative(),
+  timestamp: z.string().min(1),
+});
+
+export function parseArtifacts(raw: unknown): ContractParse<ArtifactsPayload> {
+  const parsed = ArtifactsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
+  return { ok: true, payload: parsed.data as ArtifactsPayload };
 }

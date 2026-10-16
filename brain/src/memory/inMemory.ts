@@ -53,5 +53,12 @@ export class InMemoryVectorStore implements MemoryProvider {
     return this.namespaces.get(namespace)?.size ?? 0;
   }
 
+  /** Jumlah vektor tiap namespace yang pernah di-upsert. */
+  async sizes(): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    for (const [ns, bucket] of this.namespaces) out[ns] = bucket.size;
+    return out;
+  }
+
   static readonly threshold = SIMILARITY_THRESHOLD;
 }

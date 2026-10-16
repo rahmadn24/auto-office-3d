@@ -1,7 +1,9 @@
 import type {
   AgentStatusPayload,
+  ArtifactsPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
 } from './types';
@@ -32,6 +34,8 @@ export interface Emitter {
   deploy?(payload: DeployUpdatePayload): void;
   revenue?(payload: RevenueUpdatePayload): void;
   social?(payload: SocialPostPayload): void;
+  retrieval?(payload: MemoryRetrievalPayload): void;
+  artifacts?(payload: ArtifactsPayload): void;
 }
 
 /** Event bus in-process — Socket.io (dan test) tinggal berlangganan di sini. */
@@ -41,11 +45,14 @@ export class EventBus implements Emitter {
   private deployListeners: Array<(p: DeployUpdatePayload) => void> = [];
   private revenueListeners: Array<(p: RevenueUpdatePayload) => void> = [];
   private socialListeners: Array<(p: SocialPostPayload) => void> = [];
+  private retrievalListeners: Array<(p: MemoryRetrievalPayload) => void> = [];
+  private artifactsListeners: Array<(p: ArtifactsPayload) => void> = [];
   readonly history: AgentStatusPayload[] = [];
   readonly milestones: FirstSalePayload[] = [];
   readonly deployments: DeployUpdatePayload[] = [];
   readonly revenues: RevenueUpdatePayload[] = [];
   readonly socialPosts: SocialPostPayload[] = [];
+  readonly retrievals: MemoryRetrievalPayload[] = [];
 
   onAgent(fn: (p: AgentStatusPayload) => void): () => void {
     this.listeners.push(fn);
@@ -82,6 +89,20 @@ export class EventBus implements Emitter {
     };
   }
 
+  onRetrieval(fn: (p: MemoryRetrievalPayload) => void): () => void {
+    this.retrievalListeners.push(fn);
+    return () => {
+      this.retrievalListeners = this.retrievalListeners.filter((l) => l !== fn);
+    };
+  }
+
+  onArtifacts(fn: (p: ArtifactsPayload) => void): () => void {
+    this.artifactsListeners.push(fn);
+    return () => {
+      this.artifactsListeners = this.artifactsListeners.filter((l) => l !== fn);
+    };
+  }
+
   agent(payload: AgentStatusPayload): void {
     this.history.push(payload);
     for (const fn of this.listeners) fn(payload);
@@ -105,6 +126,15 @@ export class EventBus implements Emitter {
   social(payload: SocialPostPayload): void {
     this.socialPosts.push(payload);
     for (const fn of this.socialListeners) fn(payload);
+  }
+
+  retrieval(payload: MemoryRetrievalPayload): void {
+    this.retrievals.push(payload);
+    for (const fn of this.retrievalListeners) fn(payload);
+  }
+
+  artifacts(payload: ArtifactsPayload): void {
+    for (const fn of this.artifactsListeners) fn(payload);
   }
 
   /** Helper: membangun payload PRD §5.1 dari ringkasan aksi agen. */

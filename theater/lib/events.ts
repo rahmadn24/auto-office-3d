@@ -204,3 +204,54 @@ export function parseSocialPost(raw: unknown): ContractParse<SocialPostPayload> 
   if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
   return { ok: true, payload: parsed.data };
 }
+
+/** `memory:retrieval` — stream ingatan semantik (skor cosine) untuk Vector DB inspector. */
+export const MemoryRetrievalSchema = z.object({
+  runId: z.string().min(1),
+  namespace: z.string().min(1),
+  query: z.string(),
+  topId: z.string().nullable(),
+  topScore: z.number().min(-1).max(1),
+  hits: z.number().nonnegative(),
+  timestamp: z.string().min(1),
+});
+export type MemoryRetrievalPayload = z.infer<typeof MemoryRetrievalSchema>;
+
+export function parseMemoryRetrieval(raw: unknown): ContractParse<MemoryRetrievalPayload> {
+  const parsed = MemoryRetrievalSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+/* ───────── artifacts:ready — bundel hasil run untuk viewer Artifacts & PRD ───────── */
+
+export const ArtifactFileDiffSchema = z.object({
+  status: z.enum(['created', 'modified', 'deleted', 'unchanged']),
+  added: z.number().nonnegative(),
+  removed: z.number().nonnegative(),
+});
+
+export const ArtifactsSchema = z.object({
+  runId: z.string().min(1),
+  projectName: z.string(),
+  prd: z.string(),
+  files: z.array(
+    z.object({ path: z.string().min(1), content: z.string(), diff: ArtifactFileDiffSchema }),
+  ),
+  qaSummary: z.string(),
+  qaPassed: z.boolean(),
+  cycles: z.number().nonnegative(),
+  maxCycles: z.number().positive(),
+  tokensUsed: z.number().nonnegative(),
+  liveUrl: z.string(),
+  repoUrl: z.string(),
+  durationMs: z.number().nonnegative(),
+  timestamp: z.string().min(1),
+});
+export type ArtifactsPayload = z.infer<typeof ArtifactsSchema>;
+
+export function parseArtifacts(raw: unknown): ContractParse<ArtifactsPayload> {
+  const parsed = ArtifactsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}

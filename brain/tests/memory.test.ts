@@ -46,6 +46,18 @@ describe('vector memory (PRD §2.1 · Milestone #3)', () => {
     expect(await memory.count('qa-memory')).toBe(0);
   });
 
+  it('sizes() melaporkan jumlah vektor per namespace (inspector Vector DB)', async () => {
+    const memory = store();
+    await memory.upsert('dev-memory', [
+      { id: 'd1', text: 'a' },
+      { id: 'd2', text: 'b' },
+    ]);
+    await memory.upsert('qa-memory', [{ id: 'q1', text: 'c' }]);
+    const sizes = await memory.sizes();
+    expect(sizes['dev-memory']).toBe(2);
+    expect(sizes['qa-memory']).toBe(1);
+  });
+
   it('seedMemory mengisi keempat namespace sesuai PRD', async () => {
     const memory = store();
     await seedMemory(memory);

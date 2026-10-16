@@ -4,8 +4,10 @@ import { io, type Socket } from 'socket.io-client';
 
 import {
   parseAgentStatus,
+  parseArtifacts,
   parseDeployUpdate,
   parseFirstSale,
+  parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
   type AgentStatusPayload,
@@ -29,8 +31,6 @@ const BRAIN_PATH = process.env.NEXT_PUBLIC_BRAIN_PATH ?? '/brain-server';
 let socket: Socket | null = null;
 /** Interval probe ping round-trip (badge PING xxms). */
 let pingTimer: ReturnType<typeof setInterval> | null = null;
-/** true bila pernah terhubung — snapshot hanya ditarik saat (re)connect. */
-let hasConnectedOnce = false;
 
 /** Titik duduk/berdiri agen di zona target (dari roster home). */
 function agentHome(id: string): readonly [number, number, number] {
@@ -101,9 +101,9 @@ export function connectBrain(): Socket {
 
   socket.on('connect', () => {
     useBrain.getState().setConnection('connected');
-    // Auto-reconnect: tarik snapshot terbaru sekali per koneksi.
-    if (hasConnectedOnce && socket) requestSnapshot(socket);
-    hasConnectedOnce = true;
+    // Tarik snapshot terbaru tiap (re)connect — fresh load / deep-link per tab
+    // langsung terisi state terakhir (run sudah selesai sebelum tab dibuka).
+    if (socket) requestSnapshot(socket);
   });
 
   socket.on('disconnect', () => {
@@ -138,6 +138,10 @@ export function connectBrain(): Socket {
       deploy?: unknown;
       revenue?: unknown;
       social?: unknown[];
+      retrieval?: unknown[];
+      memory?: Record<string, number>;
+      control?: { haltedAll?: boolean; runIds?: string[] };
+      artifacts?: unknown;
     } | null;
     if (!s) return;
     const agents = (s.agents ?? [])
@@ -154,12 +158,23 @@ export function connectBrain(): Socket {
       .map((p) => parseSocialPost(p))
       .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
       .map((r) => r.payload);
+    const retrieval = (s.retrieval ?? [])
+      .map((r) => parseMemoryRetrieval(r))
+      .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+      .map((r) => r.payload);
+    const artifacts = s.artifacts ? parseArtifacts(s.artifacts) : null;
     useBrain.getState().hydrateSnapshot({
       agents,
       milestones,
       deploy: deploy && deploy.ok ? deploy.payload : null,
       revenue: revenue && revenue.ok ? revenue.payload : null,
       social,
+      retrieval,
+      memory: s.memory,
+      control: s.control
+        ? { haltedAll: Boolean(s.control.haltedAll), runIds: s.control.runIds ?? [] }
+        : undefined,
+      artifacts: artifacts && artifacts.ok ? artifacts.payload : null,
     });
     for (const a of agents) bridgeTo3D(a.agentId, a);
   });
@@ -212,12 +227,46 @@ export function connectBrain(): Socket {
     useBrain.getState().applySocial(parsed.payload);
   });
 
+  socket.on('memory:retrieval', (raw: unknown) => {
+    const parsed = parseMemoryRetrieval(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] memory:retrieval DITOLAK:', parsed.issues);
+      return;
+    }
+    useBrain.getState().applyRetrieval(parsed.payload);
+  });
+
+  socket.on('artifacts:ready', (raw: unknown) => {
+    const parsed = parseArtifacts(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] artifacts:ready DITOLAK:', parsed.issues);
+      return;
+    }
+    useBrain.getState().applyArtifacts(parsed.payload);
+  });
+
+  socket.on('control:state', (raw: unknown) => {
+    const s = raw as { haltedAll?: unknown; runIds?: unknown } | null;
+    if (!s || typeof s !== 'object') return;
+    useBrain.getState().applyControl({
+      haltedAll: Boolean(s.haltedAll),
+      runIds: Array.isArray(s.runIds)
+        ? s.runIds.filter((r): r is string => typeof r === 'string')
+        : [],
+    });
+  });
+
   return socket;
 }
 
 /** SIMULATE WEBHOOK (kartu 💳) — minta Brain memancarkan transaksi $29 demo. */
 export function simulateWebhook(runId?: string): void {
   socket?.emit('stripe:simulate', { runId: runId ?? 'simulated_run' });
+}
+
+/** LOOP CONTROLS — HALT/RESUME seluruh graph (PRD §3.2). */
+export function setGraphHalt(halted: boolean, runId?: string): void {
+  socket?.emit(halted ? 'control:halt' : 'control:resume', { runId });
 }
 
 export function getBrainSocket(): Socket | null {
@@ -231,6 +280,5 @@ export function disconnectBrain(): void {
   }
   socket?.disconnect();
   socket = null;
-  hasConnectedOnce = false;
   useBrain.getState().setConnection('offline');
 }

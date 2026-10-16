@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { EventBus } from '../src/events';
 import {
   parseAgentStatus,
+  parseArtifacts,
   parseDeployUpdate,
   parseFirstSale,
+  parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
 } from '../src/server/contract';
-import type { AgentStatusPayload, FirstSalePayload } from '../src/types';
+import type { AgentStatusPayload, ArtifactsPayload, FirstSalePayload } from '../src/types';
 
 const validStatus: AgentStatusPayload = {
   runId: 'run_x',
@@ -189,5 +191,84 @@ describe('EventBus Fase 4 menyimpan deploy/revenue/social', () => {
     expect(bus.deployments).toHaveLength(1);
     expect(bus.revenues).toHaveLength(1);
     expect(bus.socialPosts).toHaveLength(1);
+  });
+});
+
+/* ───────── Fase 5 — kontrak memory:retrieval (Vector DB inspector) ───────── */
+
+const validRetrieval = {
+  runId: 'run_x',
+  namespace: 'pm-memory',
+  query: 'invoice export limit',
+  topId: 'seed:prd-standard',
+  topScore: 0.91,
+  hits: 3,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak memory:retrieval (PRD §2.1, Milestone #3)', () => {
+  it('payload valid diterima', () => {
+    expect(parseMemoryRetrieval(validRetrieval).ok).toBe(true);
+  });
+  it('topScore di luar [-1,1] ditolak', () => {
+    expect(parseMemoryRetrieval({ ...validRetrieval, topScore: 1.5 }).ok).toBe(false);
+  });
+  it('topId null diperbolehkan (tak ada hasil)', () => {
+    expect(parseMemoryRetrieval({ ...validRetrieval, topId: null }).ok).toBe(true);
+  });
+  it('hits negatif ditolak', () => {
+    expect(parseMemoryRetrieval({ ...validRetrieval, hits: -1 }).ok).toBe(false);
+  });
+  it('EventBus menyimpan retrievals', () => {
+    const bus = new EventBus();
+    bus.retrieval(validRetrieval);
+    expect(bus.retrievals).toHaveLength(1);
+  });
+});
+
+/* ───────── Fase 5 — kontrak artifacts:ready (viewer Artifacts & PRD) ───────── */
+
+const validArtifacts: ArtifactsPayload = {
+  runId: 'run_x',
+  projectName: 'Invoice AI',
+  prd: '# PRD\n## Executive Summary',
+  files: [
+    {
+      path: 'src/index.ts',
+      content: 'export {};',
+      diff: { status: 'created', added: 12, removed: 0 },
+    },
+  ],
+  qaSummary: 'Passed 18/18 tests · stmts 100%',
+  qaPassed: true,
+  cycles: 1,
+  maxCycles: 5,
+  tokensUsed: 4200,
+  liveUrl: 'invoiceai.vercel.app',
+  repoUrl: 'https://github.com/x/invoiceai',
+  durationMs: 180_000,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak artifacts:ready (Fase 5 viewer)', () => {
+  it('payload valid diterima', () => {
+    expect(parseArtifacts(validArtifacts).ok).toBe(true);
+  });
+  it('status diff di luar enum ditolak', () => {
+    const bad = {
+      ...validArtifacts,
+      files: [{ ...validArtifacts.files[0], diff: { status: 'x', added: 1, removed: 0 } }],
+    };
+    expect(parseArtifacts(bad).ok).toBe(false);
+  });
+  it('cycles negatif ditolak', () => {
+    expect(parseArtifacts({ ...validArtifacts, cycles: -1 }).ok).toBe(false);
+  });
+  it('EventBus menyiarkan artifacts', () => {
+    const bus = new EventBus();
+    const seen: string[] = [];
+    bus.onArtifacts((p) => seen.push(p.runId));
+    bus.artifacts(validArtifacts);
+    expect(seen).toEqual(['run_x']);
   });
 });

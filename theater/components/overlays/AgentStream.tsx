@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { GLASS_STRONG } from '@/lib/ui';
 import { useBrain } from '@/store/brainStore';
 
 const DIVISION_ACCENT: Record<string, string> = {
@@ -60,7 +61,12 @@ export function ConnectionBadge(): ReactNode {
   );
 }
 
-/** Agent Stream right-rail — feed telemetry mentah (PRD: raw event feed). */
+/** Agent Stream right-rail — feed telemetry mentah (PRD: raw event feed).
+ * Responsif sesuai DESIGN.md (AC 📱):
+ *  - Desktop ≥1280px: terminal inspector 380px kanan, margin 2rem, collapsible
+ *  - Tablet 768–1279px: overlay drawer (toggle tombol FEED)
+ *  - Mobile <768px: bottom sheet full-width, margin 1rem, di atas bottom dock
+ */
 export function AgentStream(): ReactNode {
   const feed = useBrain((s) => s.feed);
   const connection = useBrain((s) => s.connection);
@@ -71,6 +77,7 @@ export function AgentStream(): ReactNode {
   const clearFeed = useBrain((s) => s.clearFeed);
 
   const [autoScroll, setAutoScroll] = useState(true);
+  const [open, setOpen] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   // events/sec: jepret eventCount tiap detik, tampilkan delta.
   const [eps, setEps] = useState(0);
@@ -89,10 +96,34 @@ export function AgentStream(): ReactNode {
     if (autoScroll && listRef.current) listRef.current.scrollTop = 0;
   }, [feed, autoScroll]);
 
+  // Drawer per breakpoint: terbuka di desktop, tertutup di tablet/mobile
+  // (overlay) — efek jalan setelah hidrasi supaya SSR tetap konsisten.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const apply = () => setOpen(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   const syncPct = connection === 'connected' ? 100 : 0;
 
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`absolute bottom-20 right-4 z-40 rounded-full px-3 py-2 font-mono text-mono-label uppercase tracking-wide text-secondary transition-colors hover:text-primary md:bottom-6 md:right-6 xl:bottom-8 xl:right-8 ${GLASS_STRONG}`}
+      >
+        ◸ Feed · {feed.length}
+      </button>
+    );
+  }
+
   return (
-    <aside className="pointer-events-auto absolute right-3 top-3 bottom-3 flex w-[320px] flex-col rounded-xl border border-grid-major/60 bg-surface-container-high/85 backdrop-blur-sm">
+    <aside
+      className={`pointer-events-auto absolute bottom-20 left-4 right-4 z-40 flex max-h-[55vh] flex-col rounded-xl md:bottom-6 md:left-auto md:right-6 md:top-6 md:max-h-none md:w-[340px] xl:bottom-8 xl:right-8 xl:top-8 xl:w-[380px] ${GLASS_STRONG}`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-grid-major/60 px-3 py-2">
         <div className="font-mono text-mono-label uppercase tracking-wide text-secondary">
@@ -109,6 +140,14 @@ export function AgentStream(): ReactNode {
             SYNC {syncPct}%
           </span>
           <span>{eps} EV/S</span>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Tutup inspector"
+            className="rounded border border-white/12 px-1.5 text-[10px] transition-colors hover:bg-white/5"
+          >
+            ▸
+          </button>
         </div>
       </div>
 

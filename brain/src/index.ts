@@ -1,7 +1,8 @@
 import { loadConfig } from './config';
 import { EventBus } from './events';
 import { StripeSentinel } from './integrations';
-import { runAutonomous } from './run';
+import { createMemory } from './memory';
+import { runAutonomous, seedMemory } from './run';
 import { startSocketServer } from './server/socket';
 import { formatTokens } from './telemetry/tokens';
 
@@ -15,7 +16,11 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
   const sentinel = new StripeSentinel(config.stripeWebhookSecret);
-  const server = await startSocketServer(config, bus, { sentinel });
+  // Vector memory dibuat sekali, di-seed, lalu dibagikan ke socket server
+  // (untuk jumlah vektor di snapshot) dan tiap run otonom.
+  const memory = createMemory(config);
+  await seedMemory(memory);
+  const server = await startSocketServer(config, bus, { sentinel, memory });
 
   console.log('┌──────────────────────────────────────────────────────────────┐');
   console.log('│  AutoOffice3D · THE BRAIN daemon v1.6                        │');
@@ -34,7 +39,12 @@ async function main(): Promise<void> {
   if (prompt) {
     console.log(`\n  founder      "${prompt}"\n`);
     const started = Date.now();
-    const { state, tokensUsed } = await runAutonomous(prompt, { config, emit: bus, sentinel });
+    const { state, tokensUsed } = await runAutonomous(prompt, {
+      config,
+      emit: bus,
+      sentinel,
+      memory,
+    });
     console.log(
       `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
     );
