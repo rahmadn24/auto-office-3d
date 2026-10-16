@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 
-import type { AgentStatusPayload, AgentId, FirstSalePayload } from '@/lib/events';
+import type {
+  AgentStatusPayload,
+  AgentId,
+  DeployUpdatePayload,
+  FirstSalePayload,
+  RevenueUpdatePayload,
+  SocialPostPayload,
+} from '@/lib/events';
 import type { ZoneKey } from '@/lib/zones';
 
 /** Koneksi ke Brain (Socket.io) — PRD §2.1. */
@@ -106,6 +113,12 @@ interface BrainStore {
   lastEventAt: number | null;
   /** Jumlah event status diterima sepanjang sesi. */
   eventCount: number;
+  /** Status pipeline deployment terakhir (PRD §3.3). */
+  deploy: DeployUpdatePayload | null;
+  /** Metrik Stripe Webhook Sentinel terakhir (PRD §3.4). */
+  revenue: RevenueUpdatePayload | null;
+  /** Post kampanye sosial terakhir (urut terima, maks 8). */
+  social: SocialPostPayload[];
 
   setConnection(status: ConnectionStatus): void;
   setPing(ms: number): void;
@@ -114,12 +127,21 @@ interface BrainStore {
   applyStatus(payload: AgentStatusPayload): boolean;
   /** Terapkan milestone first sale — idempoten per stripeEventId. */
   applyMilestone(payload: FirstSalePayload): boolean;
+  /** Terapkan update pipeline deployment (GitHub → Vercel → Health). */
+  applyDeploy(payload: DeployUpdatePayload): void;
+  /** Terapkan metrik revenue dari Stripe sentinel. */
+  applyRevenue(payload: RevenueUpdatePayload): void;
+  /** Terapkan hasil dispatch kampanye sosial. */
+  applySocial(payload: SocialPostPayload): void;
   /** Hapus semua baris feed (tombol CLEAR FEED). */
   clearFeed(): void;
   /** Ambil ulang snapshot setelah reconnect. */
   hydrateSnapshot(snapshot: {
     agents?: AgentStatusPayload[];
     milestones?: FirstSalePayload[];
+    deploy?: DeployUpdatePayload | null;
+    revenue?: RevenueUpdatePayload | null;
+    social?: SocialPostPayload[];
   }): void;
 }
 
@@ -163,6 +185,9 @@ export const useBrain = create<BrainStore>((set, get) => ({
   seenSaleIds: new Set<string>(),
   lastEventAt: null,
   eventCount: 0,
+  deploy: null,
+  revenue: null,
+  social: [],
 
   setConnection: (connection) => set({ connection }),
   setPing: (pingMs) => set({ pingMs }),
@@ -243,7 +268,61 @@ export const useBrain = create<BrainStore>((set, get) => ({
 
   clearFeed: () => set({ feed: [] }),
 
-  hydrateSnapshot: ({ agents, milestones }) => {
+  applyDeploy: (payload) => {
+    const s = get();
+    const item: FeedItem = {
+      id: nextFeedId(),
+      agentId: 'devops_agent',
+      division: 'DevOps',
+      action: `deploy:${payload.status}`,
+      targetZone: 'devops_hub',
+      detail:
+        payload.status === 'ready'
+          ? `repo ${payload.repoName} → https://${payload.liveUrl}`
+          : payload.status === 'degraded'
+            ? `DEGRADED · ${payload.degradedReason ?? 'unknown'}`
+            : `${payload.repoName} · ${payload.buildSteps.filter((b) => b.status === 'done').length}/${payload.buildSteps.length} steps`,
+      at: Date.now(),
+      tsLabel: payload.timestamp,
+      runId: payload.runId,
+      kind: 'status',
+    };
+    set({
+      deploy: payload,
+      feed: [item, ...s.feed].slice(0, MAX_FEED),
+      lastEventAt: Date.now(),
+      eventCount: s.eventCount + 1,
+    });
+  },
+
+  applyRevenue: (payload) => {
+    const s = get();
+    set({ revenue: { ...payload, runId: payload.runId || s.runId || 'webhook' } });
+  },
+
+  applySocial: (payload) => {
+    const s = get();
+    const item: FeedItem = {
+      id: nextFeedId(),
+      agentId: 'marketing_agent',
+      division: 'Growth',
+      action: `social:${payload.platform}`,
+      targetZone: 'marketing_studio',
+      detail: `${payload.status} · ${payload.queueId} · ${payload.metrics.impressions} impr · "${payload.hook.slice(0, 60)}"`,
+      at: Date.now(),
+      tsLabel: payload.timestamp,
+      runId: payload.runId,
+      kind: 'status',
+    };
+    set({
+      social: [...s.social, payload].slice(-8),
+      feed: [item, ...s.feed].slice(0, MAX_FEED),
+      lastEventAt: Date.now(),
+      eventCount: s.eventCount + 1,
+    });
+  },
+
+  hydrateSnapshot: ({ agents, milestones, deploy, revenue, social }) => {
     const s = get();
     const map: Partial<Record<AgentId, AgentStatusPayload>> = { ...s.agents };
     for (const a of agents ?? []) {
@@ -279,6 +358,9 @@ export const useBrain = create<BrainStore>((set, get) => ({
       seenSaleIds: seen,
       runStage: deriveRunStage(map),
       feed: feed.slice(0, MAX_FEED),
+      deploy: deploy ?? s.deploy,
+      revenue: revenue ?? s.revenue,
+      social: social && social.length > 0 ? social.slice(-8) : s.social,
     });
   },
 }));

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { EventBus } from '../src/events';
-import { parseAgentStatus, parseFirstSale } from '../src/server/contract';
+import {
+  parseAgentStatus,
+  parseDeployUpdate,
+  parseFirstSale,
+  parseRevenueUpdate,
+  parseSocialPost,
+} from '../src/server/contract';
 import type { AgentStatusPayload, FirstSalePayload } from '../src/types';
 
 const validStatus: AgentStatusPayload = {
@@ -85,5 +91,103 @@ describe('EventBus menyimpan history untuk snapshot', () => {
     bus.milestone(validSale);
     expect(bus.history).toHaveLength(1);
     expect(bus.milestones).toHaveLength(1);
+  });
+});
+
+/* ───────── Fase 4 — kontrak deploy/revenue/social (PRD §3.3, §3.4) ───────── */
+
+const validDeploy = {
+  runId: 'run_x',
+  repoName: 'invoiceai',
+  repoUrl: 'https://github.com/autooffice3d/invoiceai',
+  liveUrl: 'invoiceai.vercel.app',
+  status: 'ready' as const,
+  buildSteps: [
+    { label: 'npm run build', status: 'done' as const },
+    { label: 'Compiled successfully', status: 'done' as const },
+  ],
+  health: { rootOk: true, apiOk: true, sslValid: true, ttfbMs: 24 },
+  uptimeS: 0,
+  bandwidthMb: 0.12,
+  edgeCache: true,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validRevenue = {
+  runId: 'run_x',
+  activeVisitors: 12,
+  checkoutSessions: 3,
+  grossRevenueArr: 29,
+  salesCount: 1,
+  lastStripeEvent: 'checkout.session.completed · cus_1',
+  signatureVerified: true,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validSocial = {
+  runId: 'run_x',
+  platform: 'x' as const,
+  status: 'published' as const,
+  queueId: 'q_x_1',
+  thread: ['hook', 'line'],
+  hook: 'shipped',
+  metrics: { impressions: 100, clicks: 5, retweets: 2 },
+  sentiment: 'positive' as const,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak deploy:update (PRD §3.3)', () => {
+  it('payload valid diterima', () => {
+    expect(parseDeployUpdate(validDeploy).ok).toBe(true);
+  });
+  it('status di luar daftar ditolak', () => {
+    expect(parseDeployUpdate({ ...validDeploy, status: 'nope' }).ok).toBe(false);
+  });
+  it('health null diperbolehkan (saat building)', () => {
+    expect(parseDeployUpdate({ ...validDeploy, health: null }).ok).toBe(true);
+  });
+  it('build step status tak valid ditolak', () => {
+    expect(
+      parseDeployUpdate({
+        ...validDeploy,
+        buildSteps: [{ label: 'x', status: 'weird' }],
+      }).ok,
+    ).toBe(false);
+  });
+});
+
+describe('kontrak revenue:update (PRD §3.4)', () => {
+  it('payload valid diterima', () => {
+    expect(parseRevenueUpdate(validRevenue).ok).toBe(true);
+  });
+  it('signatureVerified bukan boolean ditolak', () => {
+    expect(parseRevenueUpdate({ ...validRevenue, signatureVerified: 'yes' }).ok).toBe(false);
+  });
+  it('negatif ditolak', () => {
+    expect(parseRevenueUpdate({ ...validRevenue, grossRevenueArr: -1 }).ok).toBe(false);
+  });
+});
+
+describe('kontrak social:post (PRD §3.4)', () => {
+  it('payload valid diterima', () => {
+    expect(parseSocialPost(validSocial).ok).toBe(true);
+  });
+  it('platform di luar x/threads ditolak', () => {
+    expect(parseSocialPost({ ...validSocial, platform: 'facebook' }).ok).toBe(false);
+  });
+  it('sentiment di luar daftar ditolak', () => {
+    expect(parseSocialPost({ ...validSocial, sentiment: 'angry' }).ok).toBe(false);
+  });
+});
+
+describe('EventBus Fase 4 menyimpan deploy/revenue/social', () => {
+  it('tercatat untuk snapshot', () => {
+    const bus = new EventBus();
+    bus.deploy(validDeploy);
+    bus.revenue(validRevenue);
+    bus.social(validSocial);
+    expect(bus.deployments).toHaveLength(1);
+    expect(bus.revenues).toHaveLength(1);
+    expect(bus.socialPosts).toHaveLength(1);
   });
 });

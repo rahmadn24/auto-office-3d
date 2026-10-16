@@ -104,3 +104,103 @@ export function parseFirstSale(raw: unknown): ContractParse<FirstSalePayload> {
   }
   return { ok: true, payload: parsed.data };
 }
+
+/* ───────── Fase 4 — Integrations & Revenue Loop (PRD §3.3, §3.4) ───────── */
+
+export const DEPLOY_STATUSES = [
+  'provisioning',
+  'building',
+  'deploying',
+  'ready',
+  'degraded',
+] as const;
+export type DeployStatus = (typeof DEPLOY_STATUSES)[number];
+
+export const BUILD_STEP_STATUSES = ['pending', 'running', 'done'] as const;
+export type BuildStepStatus = (typeof BUILD_STEP_STATUSES)[number];
+
+export const BuildStepSchema = z.object({
+  label: z.string().min(1),
+  status: z.enum(BUILD_STEP_STATUSES),
+});
+export type BuildStep = z.infer<typeof BuildStepSchema>;
+
+export const HealthReportSchema = z.object({
+  rootOk: z.boolean(),
+  apiOk: z.boolean(),
+  sslValid: z.boolean(),
+  ttfbMs: z.number().nonnegative(),
+});
+export type HealthReport = z.infer<typeof HealthReportSchema>;
+
+export const DeployUpdateSchema = z.object({
+  runId: z.string().min(1),
+  repoName: z.string().min(1),
+  repoUrl: z.string(),
+  liveUrl: z.string(),
+  status: z.enum(DEPLOY_STATUSES),
+  buildSteps: z.array(BuildStepSchema),
+  health: HealthReportSchema.nullable(),
+  uptimeS: z.number().nonnegative().default(0),
+  bandwidthMb: z.number().nonnegative().default(0),
+  edgeCache: z.boolean().default(false),
+  degradedReason: z.string().optional(),
+  timestamp: z.string().min(1),
+});
+export type DeployUpdatePayload = z.infer<typeof DeployUpdateSchema>;
+
+export const RevenueUpdateSchema = z.object({
+  runId: z.string().min(1),
+  activeVisitors: z.number().nonnegative(),
+  checkoutSessions: z.number().nonnegative(),
+  grossRevenueArr: z.number().nonnegative(),
+  salesCount: z.number().nonnegative(),
+  lastStripeEvent: z.string(),
+  signatureVerified: z.boolean(),
+  timestamp: z.string().min(1),
+});
+export type RevenueUpdatePayload = z.infer<typeof RevenueUpdateSchema>;
+
+export const SOCIAL_PLATFORMS = ['x', 'threads'] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+export const SOCIAL_STATUSES = ['published', 'scheduled'] as const;
+export type SocialStatus = (typeof SOCIAL_STATUSES)[number];
+
+export const SocialPostSchema = z.object({
+  runId: z.string().min(1),
+  platform: z.enum(SOCIAL_PLATFORMS),
+  status: z.enum(SOCIAL_STATUSES),
+  queueId: z.string().min(1),
+  thread: z.array(z.string()),
+  hook: z.string(),
+  metrics: z.object({
+    impressions: z.number().nonnegative(),
+    clicks: z.number().nonnegative(),
+    retweets: z.number().nonnegative(),
+  }),
+  sentiment: z.enum(['positive', 'neutral', 'negative']),
+  timestamp: z.string().min(1),
+});
+export type SocialPostPayload = z.infer<typeof SocialPostSchema>;
+
+function issuesOf(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
+}
+
+export function parseDeployUpdate(raw: unknown): ContractParse<DeployUpdatePayload> {
+  const parsed = DeployUpdateSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parseRevenueUpdate(raw: unknown): ContractParse<RevenueUpdatePayload> {
+  const parsed = RevenueUpdateSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parseSocialPost(raw: unknown): ContractParse<SocialPostPayload> {
+  const parsed = SocialPostSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}

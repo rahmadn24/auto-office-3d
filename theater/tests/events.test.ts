@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseAgentStatus,
+  parseDeployUpdate,
   parseFirstSale,
+  parseRevenueUpdate,
+  parseSocialPost,
   type AgentStatusPayload,
   type FirstSalePayload,
 } from '../lib/events';
@@ -61,4 +64,65 @@ describe('kontrak client (duplikasi lib/events.ts)', () => {
         .ok,
     ).toBe(false);
   });
+});
+
+/* ───────── Fase 4 — kontrak deploy/revenue/social (paritas dgn brain) ───────── */
+
+const validDeploy = {
+  runId: 'run_x',
+  repoName: 'invoiceai',
+  repoUrl: 'https://github.com/autooffice3d/invoiceai',
+  liveUrl: 'invoiceai.vercel.app',
+  status: 'ready' as const,
+  buildSteps: [{ label: 'npm run build', status: 'done' as const }],
+  health: { rootOk: true, apiOk: true, sslValid: true, ttfbMs: 24 },
+  uptimeS: 0,
+  bandwidthMb: 0.12,
+  edgeCache: true,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validRevenue = {
+  runId: 'run_x',
+  activeVisitors: 12,
+  checkoutSessions: 3,
+  grossRevenueArr: 29,
+  salesCount: 1,
+  lastStripeEvent: 'checkout.session.completed · cus_1',
+  signatureVerified: true,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validSocial = {
+  runId: 'run_x',
+  platform: 'x' as const,
+  status: 'published' as const,
+  queueId: 'q_x_1',
+  thread: ['hook'],
+  hook: 'shipped',
+  metrics: { impressions: 100, clicks: 5, retweets: 2 },
+  sentiment: 'positive' as const,
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak deploy:update (paritas brain)', () => {
+  it('valid diterima', () => expect(parseDeployUpdate(validDeploy).ok).toBe(true));
+  it('status tak valid ditolak', () =>
+    expect(parseDeployUpdate({ ...validDeploy, status: 'nope' }).ok).toBe(false));
+  it('uptime/bandwidth/edgeCache boleh default bila hilang', () => {
+    const { uptimeS: _u, bandwidthMb: _b, edgeCache: _e, ...rest } = validDeploy;
+    expect(parseDeployUpdate(rest).ok).toBe(true);
+  });
+});
+
+describe('kontrak revenue:update (paritas brain)', () => {
+  it('valid diterima', () => expect(parseRevenueUpdate(validRevenue).ok).toBe(true));
+  it('signatureVerified non-boolean ditolak', () =>
+    expect(parseRevenueUpdate({ ...validRevenue, signatureVerified: 'yes' }).ok).toBe(false));
+});
+
+describe('kontrak social:post (paritas brain)', () => {
+  it('valid diterima', () => expect(parseSocialPost(validSocial).ok).toBe(true));
+  it('platform di luar x/threads ditolak', () =>
+    expect(parseSocialPost({ ...validSocial, platform: 'facebook' }).ok).toBe(false));
 });

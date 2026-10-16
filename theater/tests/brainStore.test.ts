@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { AgentStatusPayload, FirstSalePayload } from '../lib/events';
+import type {
+  AgentStatusPayload,
+  DeployUpdatePayload,
+  FirstSalePayload,
+  RevenueUpdatePayload,
+  SocialPostPayload,
+} from '../lib/events';
 import {
   actionToAnimState,
   parseBrainTimestamp,
@@ -53,6 +59,9 @@ beforeEach(() => {
     seenSaleIds: new Set<string>(),
     lastEventAt: null,
     eventCount: 0,
+    deploy: null,
+    revenue: null,
+    social: [],
   });
 });
 
@@ -157,3 +166,93 @@ function parseBrainTimestampToLabel(epoch: number): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 }
+
+/* ───────── Fase 4 — store deploy/revenue/social (PRD §3.3, §3.4) ───────── */
+
+const deployPayload: DeployUpdatePayload = {
+  runId: 'run_1',
+  repoName: 'invoiceai',
+  repoUrl: 'https://github.com/autooffice3d/invoiceai',
+  liveUrl: 'invoiceai.vercel.app',
+  status: 'ready',
+  buildSteps: [
+    { label: 'npm run build', status: 'done' },
+    { label: 'Compiled successfully', status: 'done' },
+  ],
+  health: { rootOk: true, apiOk: true, sslValid: true, ttfbMs: 24 },
+  uptimeS: 12,
+  bandwidthMb: 0.36,
+  edgeCache: true,
+  timestamp: '12:00:00.000',
+};
+
+const revenuePayload: RevenueUpdatePayload = {
+  runId: 'run_1',
+  activeVisitors: 8,
+  checkoutSessions: 2,
+  grossRevenueArr: 29,
+  salesCount: 1,
+  lastStripeEvent: 'checkout.session.completed · cus_1',
+  signatureVerified: true,
+  timestamp: '12:00:01.000',
+};
+
+const socialPayload: SocialPostPayload = {
+  runId: 'run_1',
+  platform: 'x',
+  status: 'published',
+  queueId: 'q_x_1',
+  thread: ['hook'],
+  hook: 'shipped autonomously',
+  metrics: { impressions: 500, clicks: 20, retweets: 4 },
+  sentiment: 'positive',
+  timestamp: '12:00:02.000',
+};
+
+describe('brainStore: applyDeploy (pipeline deployment)', () => {
+  it('menyimpan payload + mendorong feed devops', () => {
+    useBrain.getState().applyDeploy(deployPayload);
+    const s = useBrain.getState();
+    expect(s.deploy?.status).toBe('ready');
+    expect(s.deploy?.liveUrl).toBe('invoiceai.vercel.app');
+    expect(s.feed[0]?.division).toBe('DevOps');
+    expect(s.feed[0]?.detail).toContain('invoiceai.vercel.app');
+    expect(s.eventCount).toBe(1);
+  });
+});
+
+describe('brainStore: applyRevenue (Stripe sentinel)', () => {
+  it('menyimpan metrik revenue', () => {
+    useBrain.getState().applyRevenue(revenuePayload);
+    const s = useBrain.getState();
+    expect(s.revenue?.grossRevenueArr).toBe(29);
+    expect(s.revenue?.signatureVerified).toBe(true);
+    expect(s.revenue?.salesCount).toBe(1);
+  });
+});
+
+describe('brainStore: applySocial (kampanye)', () => {
+  it('menambah post & feed, batasi 8 terakhir', () => {
+    for (let i = 0; i < 10; i++) {
+      useBrain.getState().applySocial({ ...socialPayload, queueId: `q_${i}` });
+    }
+    const s = useBrain.getState();
+    expect(s.social.length).toBe(8);
+    expect(s.social.at(-1)?.queueId).toBe('q_9');
+    expect(s.feed[0]?.action).toBe('social:x');
+  });
+});
+
+describe('brainStore: hydrateSnapshot Fase 4', () => {
+  it('memulihkan deploy/revenue/social dari snapshot', () => {
+    useBrain.getState().hydrateSnapshot({
+      deploy: deployPayload,
+      revenue: revenuePayload,
+      social: [socialPayload],
+    });
+    const s = useBrain.getState();
+    expect(s.deploy?.status).toBe('ready');
+    expect(s.revenue?.salesCount).toBe(1);
+    expect(s.social).toHaveLength(1);
+  });
+});

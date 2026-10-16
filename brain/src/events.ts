@@ -1,4 +1,10 @@
-import type { AgentStatusPayload, FirstSalePayload } from './types';
+import type {
+  AgentStatusPayload,
+  DeployUpdatePayload,
+  FirstSalePayload,
+  RevenueUpdatePayload,
+  SocialPostPayload,
+} from './types';
 import {
   AGENT_DIVISION,
   AGENT_HOME_ZONE,
@@ -23,14 +29,23 @@ export interface EmitAgentInput {
 export interface Emitter {
   agent(payload: AgentStatusPayload): void;
   milestone(payload: FirstSalePayload): void;
+  deploy?(payload: DeployUpdatePayload): void;
+  revenue?(payload: RevenueUpdatePayload): void;
+  social?(payload: SocialPostPayload): void;
 }
 
 /** Event bus in-process — Socket.io (dan test) tinggal berlangganan di sini. */
 export class EventBus implements Emitter {
   private listeners: Array<(p: AgentStatusPayload) => void> = [];
   private milestoneListeners: Array<(p: FirstSalePayload) => void> = [];
+  private deployListeners: Array<(p: DeployUpdatePayload) => void> = [];
+  private revenueListeners: Array<(p: RevenueUpdatePayload) => void> = [];
+  private socialListeners: Array<(p: SocialPostPayload) => void> = [];
   readonly history: AgentStatusPayload[] = [];
   readonly milestones: FirstSalePayload[] = [];
+  readonly deployments: DeployUpdatePayload[] = [];
+  readonly revenues: RevenueUpdatePayload[] = [];
+  readonly socialPosts: SocialPostPayload[] = [];
 
   onAgent(fn: (p: AgentStatusPayload) => void): () => void {
     this.listeners.push(fn);
@@ -46,6 +61,27 @@ export class EventBus implements Emitter {
     };
   }
 
+  onDeploy(fn: (p: DeployUpdatePayload) => void): () => void {
+    this.deployListeners.push(fn);
+    return () => {
+      this.deployListeners = this.deployListeners.filter((l) => l !== fn);
+    };
+  }
+
+  onRevenue(fn: (p: RevenueUpdatePayload) => void): () => void {
+    this.revenueListeners.push(fn);
+    return () => {
+      this.revenueListeners = this.revenueListeners.filter((l) => l !== fn);
+    };
+  }
+
+  onSocial(fn: (p: SocialPostPayload) => void): () => void {
+    this.socialListeners.push(fn);
+    return () => {
+      this.socialListeners = this.socialListeners.filter((l) => l !== fn);
+    };
+  }
+
   agent(payload: AgentStatusPayload): void {
     this.history.push(payload);
     for (const fn of this.listeners) fn(payload);
@@ -54,6 +90,21 @@ export class EventBus implements Emitter {
   milestone(payload: FirstSalePayload): void {
     this.milestones.push(payload);
     for (const fn of this.milestoneListeners) fn(payload);
+  }
+
+  deploy(payload: DeployUpdatePayload): void {
+    this.deployments.push(payload);
+    for (const fn of this.deployListeners) fn(payload);
+  }
+
+  revenue(payload: RevenueUpdatePayload): void {
+    this.revenues.push(payload);
+    for (const fn of this.revenueListeners) fn(payload);
+  }
+
+  social(payload: SocialPostPayload): void {
+    this.socialPosts.push(payload);
+    for (const fn of this.socialListeners) fn(payload);
   }
 
   /** Helper: membangun payload PRD §5.1 dari ringkasan aksi agen. */
