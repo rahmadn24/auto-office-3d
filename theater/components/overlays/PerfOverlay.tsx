@@ -30,7 +30,11 @@ function PerfOverlayContent(): ReactNode {
   const healthy = fps >= TARGET_FPS;
 
   return (
-    <div className="pointer-events-none fixed bottom-5 left-5 z-50 rounded-md border border-white/10 bg-surface-container-lowest/85 px-3 py-2 font-mono text-mono-label text-on-surface-variant backdrop-blur">
+    <div
+      className="pointer-events-none fixed left-5 z-50 rounded-md border border-white/10 bg-surface-container-lowest/85 px-3 py-2 font-mono text-mono-label text-on-surface-variant backdrop-blur"
+      // Di atas area Founder Command Bar + footer (ukur dinamis di AppShell).
+      style={{ bottom: 'calc(1.25rem + var(--shell-bottom-space, 0px))' }}
+    >
       <span className="mr-3 uppercase tracking-widest text-outline">perf</span>
       <span className={healthy ? 'text-secondary' : 'text-tertiary'}>FPS {fps.toFixed(1)}</span>
       <span className="mx-2 text-outline-variant">│</span>
