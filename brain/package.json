@@ -32,6 +32,7 @@
     "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^9.39.5",
     "prettier": "^3.9.10",
+    "socket.io-client": "^4.8.4",
     "tsx": "^4.23.15",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.5"

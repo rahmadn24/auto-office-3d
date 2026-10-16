@@ -2,23 +2,28 @@
 
 import { useEffect, type ReactNode } from 'react';
 
+import { useBrain } from '@/store/brainStore';
 import { AGENT_ROSTER, useOffice } from '@/store/officeStore';
 
 /**
- * Sutradara demo Fase 2 — mensimulasikan alur PRD §1 tanpa backend:
- * prompt Founder → semua agen WORKING → kembali overview →
+ * Sutradara demo (mode OFFLINE) — mensimulasikan alur PRD §1 tanpa backend
+ * Socket.io: prompt Founder → semua agen WORKING → kembali overview →
  * FIRST SALE → semua berjalan ke hub_00 lalu CELEBRATE → pulang.
  *
- * Fase 3 akan mengganti timer ini dengan event Socket.io
- * (directives/agent_status/milestone dari Brain).
+ * Begitu Brain terhubung (Socket.io), timeline berhenti — data realtime dari
+ * brain yang menggerakkan agen (lib/brainSocket.ts).
  */
 export function DemoDirector(): ReactNode {
+  const connection = useBrain((s) => s.connection);
   const setState = useOffice((s) => s.setState);
   const setCameraPreset = useOffice((s) => s.setCameraPreset);
   const celebrateAll = useOffice((s) => s.celebrateAll);
   const resetHome = useOffice((s) => s.resetHome);
 
+  const offline = connection !== 'connected';
+
   useEffect(() => {
+    if (!offline) return;
     const timers: ReturnType<typeof setTimeout>[] = [
       // Prompt awal → preset cinematic Founder (auto-focus PRD §4.3)
       setTimeout(() => setCameraPreset('founder'), 600),
@@ -54,7 +59,7 @@ export function DemoDirector(): ReactNode {
     return () => {
       for (const timer of timers) clearTimeout(timer);
     };
-  }, [setState, setCameraPreset, celebrateAll, resetHome]);
+  }, [offline, setState, setCameraPreset, celebrateAll, resetHome]);
 
   return null;
 }

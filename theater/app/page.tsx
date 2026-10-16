@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 
+import { BrainBridge } from '../components/BrainBridge';
+import { AgentStream, ConnectionBadge } from '../components/overlays/AgentStream';
 import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
 import { PerfOverlay } from '../components/overlays/PerfOverlay';
 
@@ -22,9 +24,16 @@ const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
 export default function HomePage(): ReactNode {
   return (
     <main className="fixed inset-0 overflow-hidden bg-canvas-base">
+      <BrainBridge />
       <OfficeScene />
       <CelebrationOverlay />
       <PerfOverlay />
+      {/* Header: badge koneksi Socket.io + ping/latensi (PRD §2.1). */}
+      <div className="pointer-events-none absolute left-3 top-3 z-30">
+        <ConnectionBadge />
+      </div>
+      {/* Right-rail: Agent Stream feed mentah (PRD §5.1). */}
+      <AgentStream />
     </main>
   );
 }

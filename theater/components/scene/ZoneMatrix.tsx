@@ -1,14 +1,35 @@
 'use client';
 
 import { Html } from '@react-three/drei';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
-import { ZONES, type Zone } from '@/lib/zones';
+import { zoneActivitySuffix, useBrain } from '@/store/brainStore';
+import { ZONES, type Zone, type ZoneKey } from '@/lib/zones';
+
+/** Ticker lambat (2s) agar status basi bisa expired dari label zona. */
+function useStaleTick(active: boolean): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(id);
+  }, [active]);
+  return tick;
+}
+
+/** Suffix aktivitas live zona ("ACTIVE DEBATE", "BUILDING", …) dari brain. */
+function useZoneActivity(zoneKey: ZoneKey): string | null {
+  const agents = useBrain((s) => s.agents);
+  const hasAny = Object.keys(agents).length > 0;
+  useStaleTick(hasAny);
+  return zoneActivitySuffix(zoneKey, agents, Date.now());
+}
 
 /** Platform satu zona: pad 0.4 tinggi + border glow aksen + label layar. */
 function ZonePlatform({ zone }: { zone: Zone }): ReactNode {
   const [width, depth] = zone.size;
   const [x, y, z] = zone.position;
+  const activity = useZoneActivity(zone.key);
 
   return (
     <group position={[x, y, z]}>
@@ -49,6 +70,11 @@ function ZonePlatform({ zone }: { zone: Zone }): ReactNode {
             style={{ backgroundColor: zone.accent }}
           />
           {zone.label}
+          {activity ? (
+            <span className="ml-1.5 font-semibold" style={{ color: zone.accent }}>
+              {activity}
+            </span>
+          ) : null}
         </div>
       </Html>
     </group>

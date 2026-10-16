@@ -1,5 +1,7 @@
-import type { IncomingMessage } from 'node:http';
-import { createServer, type Server as HttpServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https';
 
 import { Server } from 'socket.io';
 
@@ -7,10 +9,12 @@ import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
 import { EventBus } from '../events';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
+import type { AgentStatusPayload, FirstSalePayload } from '../types';
+import { parseAgentStatus, parseFirstSale } from './contract';
 
 export interface BrainServer {
   io: Server;
-  httpServer: HttpServer;
+  httpServer: HttpServer | HttpsServer;
   port: number;
   url: string;
   control: RunControl;
@@ -36,7 +40,11 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
   const control = createControl();
   const controlTelemetry = { tokensUsed: 0, latencyMs: 0, model: config.llmDriver };
 
-  const httpServer = createServer((req, res) => {
+  // Status terakhir tiap agen + milestone — dipakai snapshot saat (re)connect.
+  const latestByAgent = new Map<string, AgentStatusPayload>();
+  const latestMilestones: FirstSalePayload[] = [];
+
+  const handler = (req: IncomingMessage, res: ServerResponse): void => {
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
@@ -74,18 +82,47 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
       return;
     }
     res.writeHead(404).end();
-  });
+  };
+
+  // WSS: sertifikat TLS disediakan lewat env (BRAIN_TLS_CERT / BRAIN_TLS_KEY) —
+  // tanpa sertifikat server tetap jalan ws:// (dev lokal), dengan sertifikat → wss://.
+  const tlsCert = process.env.BRAIN_TLS_CERT;
+  const tlsKey = process.env.BRAIN_TLS_KEY;
+  const useTls = Boolean(tlsCert && tlsKey);
+  const httpServer = useTls
+    ? createHttpsServer(
+        { cert: readFileSync(tlsCert as string), key: readFileSync(tlsKey as string) },
+        handler,
+      )
+    : createServer(handler);
 
   const io = new Server(httpServer, {
     path: config.socketPath,
     cors: { origin: '*' },
+    // WebSocket dulu; bila gagal (jaringan memblokir) otomatis jatuh ke long-polling.
     transports: ['websocket', 'polling'],
     pingInterval: 10_000,
     pingTimeout: 5_000,
   });
 
-  const offAgent = bus.onAgent((payload) => io.emit('agent:status_update', payload));
-  const offMilestone = bus.onMilestone((payload) => io.emit('milestone:first_sale', payload));
+  const offAgent = bus.onAgent((payload) => {
+    const parsed = parseAgentStatus(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] agent:status_update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestByAgent.set(parsed.payload.agentId, parsed.payload);
+    io.emit('agent:status_update', parsed.payload);
+  });
+  const offMilestone = bus.onMilestone((payload) => {
+    const parsed = parseFirstSale(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] milestone:first_sale DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestMilestones.push(parsed.payload);
+    io.emit('milestone:first_sale', parsed.payload);
+  });
 
   io.on('connection', (socket) => {
     socket.emit('system:hello', {
@@ -104,6 +141,25 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
       loopControls: { endpoint: 'control:halt | control:resume', state: control.snapshot() },
       socketPath: config.socketPath,
       history: bus.history.slice(-50),
+    });
+
+    // Snapshot on-demand: klien (re)connect menarik state terakhir sekali —
+    // dipakai Theater untuk memulihkan viewport tanpa menunggu event berikutnya.
+    socket.on('state:request', (ack?: (r: unknown) => void) => {
+      const snapshot = {
+        agents: [...latestByAgent.values()],
+        milestones: latestMilestones.slice(-1),
+        control: control.snapshot(),
+        generatedAt: new Date().toISOString(),
+      };
+      socket.emit('state:snapshot', snapshot);
+      ack?.({ ok: true, snapshot });
+    });
+
+    // Ping round-trip untuk badge PING xxms (PRD §2.1) — klien minta echo,
+    // latensi = waktu sampai ack kembali.
+    socket.on('sys:ping', (ack?: (r: unknown) => void) => {
+      ack?.({ t: Date.now() });
     });
 
     socket.on('control:halt', (input: unknown, ack?: (r: unknown) => void) => {
@@ -162,7 +218,7 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
     httpServer,
     port,
     control,
-    url: `ws://localhost:${port}${config.socketPath}`,
+    url: `${useTls ? 'wss' : 'ws'}://localhost:${port}${config.socketPath}`,
     async close() {
       offAgent();
       offMilestone();

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import { CAMERA_PRESET, CANVAS_THEME } from '@/lib/zones';
 import { useOffice } from '@/store/officeStore';
+import { useBrain } from '@/store/brainStore';
 
 import { Floor } from './Floor';
 import { NeuralBus } from './NeuralBus';
@@ -43,6 +44,7 @@ export default function OfficeScene(): ReactNode {
           (window as unknown as Record<string, unknown>).__office = {
             scene: state.scene,
             store: useOffice,
+            brain: useBrain,
           };
         }
       }}
