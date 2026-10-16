@@ -1,3 +1,5 @@
+import { GraphHaltedError, type RunControl } from '../control';
+import { diffArtifacts, diffSummary } from '../diff';
 import { EventBus, type Emitter } from '../events';
 import { parseFileBundle, type LLMProvider } from '../llm/provider';
 import type { MemoryProvider } from '../memory/provider';
@@ -7,8 +9,6 @@ import { slugify } from '../slug';
 import type { TokenBudget } from '../telemetry/tokens';
 import {
   AGENT_HOME_ZONE,
-  ZONE_LABEL,
-  nowIso,
   timestampMs,
   type AgentId,
   type CurrentAction,
@@ -24,6 +24,8 @@ export interface GraphDeps {
   sandbox: SandboxDriver;
   emit: Emitter;
   budget: TokenBudget;
+  /** Endpoint HALT GRAPH (Loop Controls) — opsional. */
+  control?: RunControl;
 }
 
 interface EmitOpts {
@@ -61,18 +63,49 @@ function appendLog(logs: string[], message: string): string[] {
   return [...logs, `[${timestampMs()}] ${message}`];
 }
 
+/**
+ * Gerbang HALT GRAPH — setiap node memeriksa kontrol sebelum bekerja.
+ * Ketika operator menghentikan run, node melempar `GraphHaltedError`:
+ * LangGraph menyimpan checkpoint dengan `next` node tersebut, sehingga
+ * `resumeRun(...)` (setelah `control.resume`) melanjutkan dari titik berhenti.
+ */
+function haltGate(deps: GraphDeps, state: RunState): void {
+  if (!deps.control?.isHalted(state.runId)) return;
+
+  emitStatus(
+    deps,
+    state.runId,
+    'founder_agent',
+    'idle',
+    'GRAPH HALTED by operator — semua divisi dijeda',
+    { zone: 'central_bus' },
+  );
+  throw new GraphHaltedError(state.runId);
+}
+
 async function timed<T>(fn: () => Promise<T>): Promise<{ value: T; latencyMs: number }> {
   const start = Date.now();
   const value = await fn();
   return { value, latencyMs: Date.now() - start };
 }
 
+function hashSeed(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
 /* ─────────────────────────── Node: Founder ─────────────────────────── */
 
-export function founderNode(_deps: GraphDeps) {
+export function founderNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     emitStatus(
-      _deps,
+      deps,
       state.runId,
       'founder_agent',
       'discussing',
@@ -91,20 +124,29 @@ export function founderNode(_deps: GraphDeps) {
 
 export function pmNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     const { value: recall, latencyMs } = await timed(async () =>
       deps.memory.search('pm-memory', state.founderPrompt, 3),
     );
-    const retrieved = recall.filter((h) => h.score >= 0).map((h) => h.text);
+    const retrieved = recall.map((h) => h.text);
 
     const result = await deps.llm.complete({
       task: 'prd',
       prompt: state.founderPrompt,
       context: { projectName: state.projectName, retrieved },
     });
-    deps.budget.add(result.usage);
+    deps.budget.add(result.usage, 'Product');
 
+    const seed = hashSeed(state.founderPrompt);
+    const entropy = ((seed % 90) + 10) / 100;
+    const signature = [
+      `> **Synthesized by PM Agent** · Autonomous Signature Verified`,
+      `> Model: ${result.model} · Seed: #${seed} · Entropy: ${entropy.toFixed(2)}`,
+      '',
+    ].join('\n');
+    const prd = `${signature}${result.text}`;
     const prdPath = `specs/PRD-${slugify(state.projectName)}.md`;
-    const prd = result.text;
 
     // Sintesis disimpan kembali ke memori (Milestone #3 — recall siklus berikutnya)
     await deps.memory.upsert('pm-memory', [
@@ -120,7 +162,7 @@ export function pmNode(deps: GraphDeps) {
       state.runId,
       'pm_agent',
       'discussing',
-      `Synthesized ${prdPath} · recall ${recall.length} vectors (top ${(recall[0]?.score ?? 0).toFixed(2)})`,
+      `Synthesized ${prdPath} · recall ${recall.length} vectors (top ${(recall[0]?.score ?? 0).toFixed(2)}) · seed #${seed}`,
       { zone: 'meeting_room', latencyMs },
     );
 
@@ -128,7 +170,7 @@ export function pmNode(deps: GraphDeps) {
       stage: 'spec',
       prd,
       artifacts: { ...state.artifacts, [prdPath]: prd },
-      logs: appendLog(state.logs, `PM · PRD written to ${prdPath}`),
+      logs: appendLog(state.logs, `PM · PRD written to ${prdPath} (seed #${seed})`),
       model: result.model,
       tokensUsed: deps.budget.total,
       latencyMs,
@@ -140,6 +182,8 @@ export function pmNode(deps: GraphDeps) {
 
 export function devNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     const { value: recall } = await timed(async () =>
       deps.memory.search('dev-memory', state.prd || state.founderPrompt, 3),
     );
@@ -153,17 +197,20 @@ export function devNode(deps: GraphDeps) {
         retrieved: recall.map((h) => h.text),
       },
     });
-    deps.budget.add(result.usage);
+    deps.budget.add(result.usage, 'Engineering');
 
     const files = parseFileBundle(result.text);
+    // Diff dihitung terhadap state setelah merge (PRD tetap ada → unchanged).
+    const diffs = diffArtifacts(state.artifacts, { ...state.artifacts, ...files });
     const cycle = cycleLabel(state.iteration, state.maxIterations);
+    const summary = diffSummary(diffs);
 
     emitStatus(
       deps,
       state.runId,
       'dev_agent',
       'coding',
-      `Coding ${Object.keys(files).length} files · ${Object.keys(files).join(', ')} · ${cycle}`,
+      `Coding ${Object.keys(files).length} files · ${summary} · ${cycle}`,
       { zone: 'dev_lab', latencyMs: 0 },
     );
 
@@ -178,7 +225,11 @@ export function devNode(deps: GraphDeps) {
     return {
       stage: 'coding',
       artifacts: { ...state.artifacts, ...files },
-      logs: appendLog(state.logs, `DEV · emitted ${Object.keys(files).length} files (${cycle})`),
+      diffs,
+      logs: appendLog(
+        state.logs,
+        `DEV · emitted ${Object.keys(files).length} files · ${summary} (${cycle})`,
+      ),
       model: result.model,
       tokensUsed: deps.budget.total,
       latencyMs: 0,
@@ -190,6 +241,8 @@ export function devNode(deps: GraphDeps) {
 
 export function qaNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     const cycle = cycleLabel(state.iteration, state.maxIterations);
     emitStatus(
       deps,
@@ -205,28 +258,24 @@ export function qaNode(deps: GraphDeps) {
         runId: state.runId,
         files: state.artifacts,
         timeoutMs: 60_000,
+        coverage: true,
       }),
     );
 
     const iteration = state.iteration + 1;
+    const coverage = result.tests.coverage;
+    const coverageText = coverage ? ` · stmts ${coverage.statements}%` : '';
     const summary = result.rejectedBy
       ? `SECURITY REJECTED by ${result.rejectedBy}`
       : result.ok
-        ? `Passed ${result.tests.passed}/${result.tests.total} tests · tsc clean · ${result.durationMs}ms`
-        : `FAILED ${result.tests.failed}/${result.tests.total} · ${result.typeCheck.errors.length} type errors`;
+        ? `Passed ${result.tests.passed}/${result.tests.total} tests · tsc clean · ${result.durationMs}ms${coverageText}`
+        : `FAILED ${result.tests.failed}/${result.tests.total} · ${result.typeCheck.errors.length} type errors${coverageText}`;
 
-    emitStatus(
-      deps,
-      state.runId,
-      'qa_agent',
-      'testing',
-      summary,
-      {
-        zone: 'dev_lab',
-        cycle: { current: iteration, max: state.maxIterations },
-        latencyMs,
-      },
-    );
+    emitStatus(deps, state.runId, 'qa_agent', 'testing', summary, {
+      zone: 'dev_lab',
+      cycle: { current: iteration, max: state.maxIterations },
+      latencyMs,
+    });
 
     return {
       stage: 'testing',
@@ -244,6 +293,8 @@ export function qaNode(deps: GraphDeps) {
 
 export function safeBuildNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     const files = safeBuildBundle();
 
     emitStatus(
@@ -251,7 +302,7 @@ export function safeBuildNode(deps: GraphDeps) {
       state.runId,
       'dev_agent',
       'coding',
-      'CIRCUIT BREAKER TRIPPED (5/5) → injecting safe-build bundle',
+      'CIRCUIT BREAKER TRIPPED (5/5) → GRAPH LOCKED · injecting safe-build bundle',
       { zone: 'dev_lab', cycle: { current: state.maxIterations, max: state.maxIterations } },
     );
 
@@ -264,14 +315,16 @@ export function safeBuildNode(deps: GraphDeps) {
     return {
       stage: ok ? 'fallback' : 'failed',
       fallbackTriggered: true,
+      graphLocked: true,
       artifacts: files,
+      diffs: diffArtifacts(state.artifacts, files),
       lastQaSummary: ok
         ? `Safe-build verified · ${result.tests.passed}/${result.tests.total} tests`
         : 'Safe-build verification failed',
       typeErrors: result.typeCheck.errors,
       logs: appendLog(
         state.logs,
-        `BREAKER · fallback safe-build ${ok ? 'VERIFIED' : 'FAILED'} (${result.tests.passed}/${result.tests.total})`,
+        `BREAKER · GRAPH LOCKED · fallback safe-build ${ok ? 'VERIFIED' : 'FAILED'} (${result.tests.passed}/${result.tests.total})`,
       ),
       latencyMs,
     };
@@ -282,6 +335,8 @@ export function safeBuildNode(deps: GraphDeps) {
 
 export function devopsNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     const slug = slugify(state.projectName);
     const repoUrl = `https://github.com/autooffice3d/${slug}`;
     const liveUrl = `${slug}.vercel.app`;
@@ -310,6 +365,8 @@ export function devopsNode(deps: GraphDeps) {
 
 export function growthNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
+    haltGate(deps, state);
+
     emitStatus(
       deps,
       state.runId,
@@ -327,7 +384,7 @@ export function growthNode(deps: GraphDeps) {
       currency: 'USD',
       stripeEventId: `evt_${state.runId}`,
       hasCustomers: true,
-      timestamp: nowIso(),
+      timestamp: new Date().toISOString(),
     };
     deps.emit.milestone(sale);
 

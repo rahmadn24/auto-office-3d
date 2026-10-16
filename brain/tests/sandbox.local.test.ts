@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeBuildBundle } from '../src/safeBuild';
+import { codeBundleFiles, safeBuildBundle } from '../src/safeBuild';
 import { LocalSandbox } from '../src/sandbox/local';
+import { COVERAGE_THRESHOLD } from '../src/sandbox/types';
 
 const sandbox = new LocalSandbox(60_000);
 
@@ -47,4 +48,21 @@ describe('local sandbox — isolated execution (PRD §2.1, §6.1)', () => {
     expect(result.rejectedBy).toBe('prompt-injection-guard');
     expect(result.logs).toContain('SECURITY_REJECTED');
   }, 30_000);
+
+  it('coverage target ≥ 90% pada bundle Dev Agent (PRD §3.2)', async () => {
+    const result = await sandbox.run({
+      runId: 'run_sandbox_coverage',
+      files: codeBundleFiles('cov'),
+      timeoutMs: 60_000,
+      coverage: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.tests.coverage).toBeDefined();
+    const coverage = result.tests.coverage!;
+    expect(coverage.statements).toBeGreaterThanOrEqual(COVERAGE_THRESHOLD);
+    expect(coverage.lines).toBeGreaterThanOrEqual(COVERAGE_THRESHOLD);
+    expect(coverage.statements).toBeLessThanOrEqual(100);
+    expect(result.logs).toContain('Coverage:');
+  }, 120_000);
 });

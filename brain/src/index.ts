@@ -20,8 +20,12 @@ async function main(): Promise<void> {
   console.log('└──────────────────────────────────────────────────────────────┘');
   console.log(`  socket       ${server.url}`);
   console.log(`  health       http://localhost:${server.port}/health`);
-  console.log(`  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver}`);
-  console.log(`  guardrails   breaker=${config.maxIterations}x · token budget=${formatTokens(config.tokenBudget)}`);
+  console.log(
+    `  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver}`,
+  );
+  console.log(
+    `  guardrails   breaker=${config.maxIterations}x · token budget=${formatTokens(config.tokenBudget)}`,
+  );
 
   const prompt = process.argv[2] ?? process.env.FOUNDER_PROMPT;
   if (prompt) {

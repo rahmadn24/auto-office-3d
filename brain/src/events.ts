@@ -1,5 +1,14 @@
 import type { AgentStatusPayload, FirstSalePayload } from './types';
-import { AGENT_DIVISION, AGENT_HOME_ZONE, ZONE_COORDINATES, timestampMs, type AgentId, type CurrentAction, type TargetZone, type Telemetry } from './types';
+import {
+  AGENT_DIVISION,
+  AGENT_HOME_ZONE,
+  ZONE_COORDINATES,
+  timestampMs,
+  type AgentId,
+  type CurrentAction,
+  type TargetZone,
+  type Telemetry,
+} from './types';
 
 export interface EmitAgentInput {
   runId: string;

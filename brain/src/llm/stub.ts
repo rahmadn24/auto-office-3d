@@ -1,11 +1,6 @@
-import { ENGINE_SPEC_TS, BILLING_SPEC_TS, ENGINE_TS, TYPES_TS, billingTs } from '../safeBuild';
+import { codeBundleFiles } from '../safeBuild';
 import { slugify } from '../slug';
-import {
-  estimateTokens,
-  type LLMProvider,
-  type LLMRequest,
-  type LLMResult,
-} from './provider';
+import { estimateTokens, type LLMProvider, type LLMRequest, type LLMResult } from './provider';
 
 function titleCase(input: string): string {
   return input
@@ -85,14 +80,5 @@ function prdDocument(request: LLMRequest): string {
 }
 
 function codeBundle(request: LLMRequest): string {
-  const bundle = {
-    files: {
-      'src/types.ts': TYPES_TS,
-      'src/lib/engine.ts': ENGINE_TS,
-      'src/lib/billing.ts': billingTs(slugify(request.context.projectName)),
-      'tests/engine.spec.ts': ENGINE_SPEC_TS,
-      'tests/billing.spec.ts': BILLING_SPEC_TS,
-    },
-  };
-  return JSON.stringify(bundle, null, 2);
+  return JSON.stringify({ files: codeBundleFiles(slugify(request.context.projectName)) }, null, 2);
 }

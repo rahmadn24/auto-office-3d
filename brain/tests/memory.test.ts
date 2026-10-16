@@ -19,7 +19,10 @@ describe('vector memory (PRD §2.1 · Milestone #3)', () => {
   it('recall lintas run melampaui ambang 0.85', async () => {
     const memory = store();
     await memory.upsert('pm-memory', [
-      { id: 'a', text: 'Stripe webhook idempotent handler using Supabase RPC billing_cycle_decrement' },
+      {
+        id: 'a',
+        text: 'Stripe webhook idempotent handler using Supabase RPC billing_cycle_decrement',
+      },
     ]);
     const [hit] = await memory.search(
       'pm-memory',
@@ -31,8 +34,13 @@ describe('vector memory (PRD §2.1 · Milestone #3)', () => {
 
   it('namespace terisolasi — memori dev tidak bocor ke qa', async () => {
     const memory = store();
-    await memory.upsert('dev-memory', [{ id: 'd1', text: 'Next.js App Router Stripe checkout boilerplate' }]);
-    const cross = await memory.search('qa-memory', 'Next.js App Router Stripe checkout boilerplate');
+    await memory.upsert('dev-memory', [
+      { id: 'd1', text: 'Next.js App Router Stripe checkout boilerplate' },
+    ]);
+    const cross = await memory.search(
+      'qa-memory',
+      'Next.js App Router Stripe checkout boilerplate',
+    );
     expect(cross).toHaveLength(0);
     expect(await memory.count('dev-memory')).toBe(1);
     expect(await memory.count('qa-memory')).toBe(0);

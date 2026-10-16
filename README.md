@@ -22,6 +22,8 @@ auto-office-3d/
 │       ├── types.ts        # Kontrak payload PRD §5 (agent:status_update, milestone:first_sale)
 │       ├── events.ts       # Event bus in-process (di-subscribe Socket.io)
 │       ├── graph/          # LangGraph state machine + 4 divisi + circuit breaker
+│       ├── control.ts      # HALT GRAPH / resume (Loop Controls)
+│       ├── diff.ts         # Diff tracker per-berkas (telemetri Dev Agent)
 │       ├── memory/         # Vector memory (Pinecone / in-memory) + embeddings
 │       ├── sandbox/        # Isolasi eksekusi kode (E2B / local exec) + security guard
 │       ├── llm/            # Provider Claude (Anthropic) / stub deterministik
@@ -58,10 +60,27 @@ git checkout main && git merge --no-ff fase/1-brain-state-machine
 ```bash
 cd brain
 npm install
-npm test           # unit + integration test
-npm run simulate   # 1 prompt Founder → run otonom penuh (mode stub, tanpa API key)
-npm run dev        # start Socket.io daemon di ws://localhost:4800/brain-server
+npm test                # unit + integration test (48 test)
+npm run test:coverage   # + laporan coverage (target ≥ 90% statement)
+npm run typecheck       # tsc --noEmit (strict)
+npm run lint            # ESLint flat config
+npm run format:check    # Prettier konsisten
+npm run simulate        # 1 prompt Founder → run otonom penuh (mode stub, tanpa API key)
+npm run dev             # start Socket.io daemon di ws://localhost:4800/brain-server
 ```
+
+### Loop Controls (HALT GRAPH / RESUME)
+
+Run bisa dihentikan manual kapan saja lalu dilanjutkan dari state tersimpan
+(checkpointer LangGraph):
+
+```bash
+curl -X POST http://localhost:4800/control/halt   # {} = semua run, {"runId":"..."} = satu run
+curl -X POST http://localhost:4800/control/resume
+```
+
+Lewat Socket.io: event `control:halt` / `control:resume` dengan payload
+`{ runId?: string }` (state terkini ikut dikirim di `system:hello.loopControls`).
 
 Semua driver bersifat **env-gated** — tanpa API key sistem tetap jalan memakai driver
 `stub`/`memory`/`local` (offline), dan otomatis berpindah ke driver produksi

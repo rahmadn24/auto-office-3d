@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { initialState, type RunState } from '../src/graph/state';
-import { EventBus } from '../src/events';
+import { type EventBus } from '../src/events';
 import { ZONE_COORDINATES, AGENT_IDS, ACTIONS, DIVISIONS, ZONES } from '../src/types';
 import { makeOrchestrator, FakeSandbox } from './helpers';
 
@@ -39,7 +39,7 @@ function assertContract(bus: EventBus): void {
 
 describe('LangGraph orchestrator (PRD §3)', () => {
   it('happy path: PRD → kode → QA hijau → deploy → sale pertama', async () => {
-    const { app, bus } = makeOrchestrator({ sandbox: new FakeSandbox('pass') });
+    const { app, bus, budget } = makeOrchestrator({ sandbox: new FakeSandbox('pass') });
     const state = (await app.invoke(init(), { recursionLimit: 64 })) as RunState;
 
     expect(state.stage).toBe('done');
@@ -51,8 +51,31 @@ describe('LangGraph orchestrator (PRD §3)', () => {
     expect(state.liveUrl).toMatch(/\.vercel\.app$/);
     expect(state.repoUrl).toContain('github.com');
     expect(state.prd).toContain('## 01 / Executive Summary');
+    // Signature block PRD (AC PM Agent): model + seed + entropy
+    expect(state.prd).toContain('Synthesized by PM Agent');
+    expect(state.prd).toMatch(/Model: .+ · Seed: #\d+ · Entropy: \d\.\d{2}/);
     expect(Object.keys(state.artifacts).some((k) => k.startsWith('specs/PRD-'))).toBe(true);
     expect(Object.keys(state.artifacts)).toContain('tests/engine.spec.ts');
+    // Struktur Dev Agent (AC): src/routes, src/components, src/lib/stripe.ts
+    expect(Object.keys(state.artifacts)).toEqual(
+      expect.arrayContaining([
+        'src/routes/invoices.ts',
+        'src/components/invoice-summary.ts',
+        'src/lib/stripe.ts',
+      ]),
+    );
+
+    // Diff tracker per-berkas tercatat di state
+    expect(state.diffs['src/routes/invoices.ts']).toEqual({
+      status: 'created',
+      added: expect.any(Number) as unknown as number,
+      removed: 0,
+    });
+    expect(state.diffs['src/routes/invoices.ts']!.added).toBeGreaterThan(0);
+
+    // Breakdown token per divisi (PM=Product, Dev=Engineering)
+    expect(budget.byDivision().Product).toBeGreaterThan(0);
+    expect(budget.byDivision().Engineering).toBeGreaterThan(0);
 
     const agents = new Set(bus.history.map((p) => p.agentId));
     for (const id of AGENT_IDS) expect(agents.has(id)).toBe(true);
@@ -70,6 +93,8 @@ describe('LangGraph orchestrator (PRD §3)', () => {
 
     expect(state.iteration).toBe(5);
     expect(state.fallbackTriggered).toBe(true);
+    // GRAPH LOCKED — loop retry ditutup setelah trip (PRD §3.2)
+    expect(state.graphLocked).toBe(true);
     // Fallback tidak membatalkan run: safe-build tetap dideploy sampai stage 'done'
     expect(state.stage).toBe('done');
     expect(state.lastQaSummary).toContain('Safe-build verified');
@@ -94,7 +119,7 @@ describe('LangGraph orchestrator (PRD §3)', () => {
     expect(state.stage).toBe('done');
     expect(state.qaPassed).toBe(true);
     expect(state.iteration).toBe(1);
-    expect(state.lastQaSummary).toMatch(/Passed \d+\/\d+ tests · tsc clean/);
+    expect(state.lastQaSummary).toMatch(/Passed \d+\/\d+ tests · tsc clean · \d+ms · stmts \d+%/);
     expect(state.hasCustomers).toBe(true);
     expect(state.tokensUsed).toBeGreaterThan(0);
     assertContract(bus);

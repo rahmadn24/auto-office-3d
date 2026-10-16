@@ -19,6 +19,7 @@ export const RunStateSchema = z.object({
     'done',
     'fallback',
     'failed',
+    'halted',
   ]),
   /** path → isi berkas hasil codegen */
   artifacts: z.record(z.string(), z.string()),
@@ -30,6 +31,19 @@ export const RunStateSchema = z.object({
   typeErrors: z.array(z.string()).default([]),
   /** true bila circuit breaker trip → fallback safe-build (PRD §3.2) */
   fallbackTriggered: z.boolean().default(false),
+  /** GRAPH LOCKED — loop retry ditutup setelah trip (PRD §3.2) */
+  graphLocked: z.boolean().default(false),
+  /** Hasil diff per-berkas terakhir (Dev Agent → sandbox) */
+  diffs: z
+    .record(
+      z.string(),
+      z.object({
+        status: z.enum(['created', 'modified', 'deleted', 'unchanged']),
+        added: z.number().int().nonnegative(),
+        removed: z.number().int().nonnegative(),
+      }),
+    )
+    .default({}),
   liveUrl: z.string().default(''),
   repoUrl: z.string().default(''),
   healthOk: z.boolean().default(false),

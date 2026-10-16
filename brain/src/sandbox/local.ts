@@ -6,7 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { formatViolations, validateFiles } from './guard';
-import type { SandboxDriver, SandboxRequest, SandboxResult, TestReport } from './types';
+import { COVERAGE_THRESHOLD } from './types';
+import type {
+  CoverageReport,
+  SandboxDriver,
+  SandboxRequest,
+  SandboxResult,
+  TestReport,
+} from './types';
 
 const require = createRequire(import.meta.url);
 /** Dir `node_modules` milik brain — dipakai sebagai isi sandbox lewat symlink. */
@@ -63,7 +70,13 @@ function exec(nodeArgs: string[], cwd: string, timeoutMs: number): Promise<ExecO
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', (err) => {
       clearTimeout(timer);
-      resolve({ code: 127, stdout, stderr: `${stderr}\n${err.message}`, timedOut, durationMs: Date.now() - started });
+      resolve({
+        code: 127,
+        stdout,
+        stderr: `${stderr}\n${err.message}`,
+        timedOut,
+        durationMs: Date.now() - started,
+      });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -80,7 +93,58 @@ function parseVitestReport(out: string, fallbackDuration: number): TestReport {
   const totalMatch = /\((\d+)\)/.exec(testsLine);
   const total = totalMatch ? Number(totalMatch[1]) : passed + failed + skipped;
   const duration = Number(/\((\d+)ms\)/.exec(out)?.[1] ?? fallbackDuration);
-  return { total, passed, failed, durationMs: duration };
+  const report: TestReport = { total, passed, failed, durationMs: duration };
+  const coverage = parseCoverage(out);
+  if (coverage) report.coverage = coverage;
+  return report;
+}
+
+/** Kontohasil vitest: blok `Coverage summary`, tabel reporter teks (baris `All files`), atau baris tunggal. */
+function parseCoverage(out: string): CoverageReport | undefined {
+  const pick = (name: string): number | undefined => {
+    const match = new RegExp(`${name}\\s*:\\s*([\\d.]+)%`, 'i').exec(out);
+    return match ? Number(match[1]) : undefined;
+  };
+
+  if (/Coverage summary/.test(out)) {
+    const statements = pick('Statements');
+    const branches = pick('Branches');
+    const functions = pick('Functions');
+    const lines = pick('Lines');
+    if (
+      statements !== undefined &&
+      branches !== undefined &&
+      functions !== undefined &&
+      lines !== undefined
+    ) {
+      return { statements, branches, functions, lines };
+    }
+  }
+
+  // Tabel reporter teks: `All files | 100 | 96 | 100 | 100 |`
+  const table = /^All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/m.exec(
+    out,
+  );
+  if (table) {
+    return {
+      statements: Number(table[1]),
+      branches: Number(table[2]),
+      functions: Number(table[3]),
+      lines: Number(table[4]),
+    };
+  }
+
+  const line =
+    /Coverage:\s*([\d.]+)%\s+Statements[^|]*\|\s*([\d.]+)%\s+Branches[^|]*\|\s*([\d.]+)%\s+Functions[^|]*\|\s*([\d.]+)%\s+Lines/i.exec(
+      out,
+    );
+  if (!line) return undefined;
+  return {
+    statements: Number(line[1]),
+    branches: Number(line[2]),
+    functions: Number(line[3]),
+    lines: Number(line[4]),
+  };
 }
 
 const SANDBOX_TSCONFIG = {
@@ -139,7 +203,11 @@ export class LocalSandbox implements SandboxDriver {
       const vitestBin = resolveBin('vitest', 'vitest');
       const timeout = request.timeoutMs || this.defaultTimeoutMs;
 
-      const typecheck = await exec([tscBin, '--noEmit', '--pretty', 'false', '-p', dir], dir, timeout);
+      const typecheck = await exec(
+        [tscBin, '--noEmit', '--pretty', 'false', '-p', dir],
+        dir,
+        timeout,
+      );
       const typeErrors = `${typecheck.stdout}\n${typecheck.stderr}`
         .split('\n')
         .map((l) => l.trim())
@@ -147,23 +215,29 @@ export class LocalSandbox implements SandboxDriver {
         .filter((l) => !/Found \d+ error/.test(l))
         .slice(0, 50);
 
-      const tests = await exec([vitestBin, 'run'], dir, timeout);
-      const report = parseVitestReport(`${tests.stdout}\n${tests.stderr}`, tests.durationMs);
+      const vitestArgs = ['run'];
+      if (request.coverage) vitestArgs.push('--coverage');
+      const tests = await exec([vitestBin, ...vitestArgs], dir, timeout);
+      const output = `${tests.stdout}\n${tests.stderr}`;
+      const report = parseVitestReport(output, tests.durationMs);
 
       const timedOut = typecheck.timedOut || tests.timedOut;
       const typeOk = typecheck.code === 0;
       const testsOk = tests.code === 0 && report.failed === 0 && report.total > 0;
+      const coverageOk = !report.coverage || report.coverage.statements >= COVERAGE_THRESHOLD;
 
       return {
-        ok: typeOk && testsOk && !timedOut,
+        ok: typeOk && testsOk && coverageOk && !timedOut,
         driver: this.driver,
         typeCheck: { ok: typeOk, errors: typeErrors },
         tests: report,
         logs: [
           timedOut ? `TIMEOUT after ${timeout}ms — process killed` : '',
           `tsc --noEmit → exit ${typecheck.code}`,
-          tests.stdout.trim(),
-          tests.stderr.trim(),
+          report.coverage
+            ? `Coverage: ${report.coverage.statements}% Statements | ${report.coverage.branches}% Branches | ${report.coverage.functions}% Functions | ${report.coverage.lines}% Lines`
+            : '',
+          output.trim(),
         ]
           .filter(Boolean)
           .join('\n')
@@ -178,7 +252,8 @@ export class LocalSandbox implements SandboxDriver {
   private async materialize(dir: string, files: Record<string, string>): Promise<void> {
     for (const [rel, content] of Object.entries(files)) {
       const target = path.join(dir, rel);
-      if (!target.startsWith(dir + path.sep)) throw new Error(`Refusing to write outside sandbox: ${rel}`);
+      if (!target.startsWith(dir + path.sep))
+        throw new Error(`Refusing to write outside sandbox: ${rel}`);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, content, 'utf8');
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { codeBundleFiles } from '../src/safeBuild';
 import { validateFiles, validatePaths } from '../src/sandbox/guard';
 
 const cleanBundle = {
@@ -26,7 +27,10 @@ describe('prompt-injection & code-poisoning guard (PRD §6.3)', () => {
       'src/a.ts': `import { readFileSync } from 'node:fs';`,
       'src/b.ts': `import { execSync } from 'node:child_process';`,
     });
-    expect(result.violations.map((v) => v.rule).sort()).toEqual(['child-process', 'filesystem-module']);
+    expect(result.violations.map((v) => v.rule).sort()).toEqual([
+      'child-process',
+      'filesystem-module',
+    ]);
   });
 
   it('menolak egress jaringan', () => {
@@ -45,5 +49,46 @@ describe('prompt-injection & code-poisoning guard (PRD §6.3)', () => {
     expect(validatePaths({ '../../etc/passwd': 'x' })).toHaveLength(1);
     expect(validatePaths({ '/etc/passwd': 'x' })).toHaveLength(1);
     expect(validatePaths({ 'src/ok.ts': 'x' })).toHaveLength(0);
+  });
+
+  // ── Lapisan AST (TypeScript Compiler API) — PRD §6.3 ──────────────────
+  it('menolak akses env var host lewat bracket notation (lolos regex)', () => {
+    const result = validateFiles({ 'src/x.ts': "const k = process['env']['AWS_KEY'];\n" });
+    expect(result.ok).toBe(false);
+    expect(result.violations.map((v) => v.rule)).toContain('host-env-access');
+  });
+
+  it('menolak require() dinamis ke fs/child_process', () => {
+    const result = validateFiles({
+      'src/x.ts': "const cp = require('node:child_process');\ncp.exec('ls');\n",
+    });
+    expect(result.violations.map((v) => v.rule)).toContain('child-process');
+  });
+
+  it('menolak proses host (process.exit / process.binding)', () => {
+    const result = validateFiles({ 'src/x.ts': 'process.exit(1);\n' });
+    expect(result.violations.map((v) => v.rule)).toContain('host-process-control');
+  });
+
+  it('menolak polaritas prototype pollution (__proto__ literal)', () => {
+    const result = validateFiles({
+      'src/x.ts': "const o = {}; o['__proto__'] = { admin: true };\n",
+    });
+    expect(result.violations.map((v) => v.rule)).toContain('prototype-pollution');
+  });
+
+  it('mendedeuplikasi aturan yang terdeteksi regex sekaligus AST', () => {
+    const result = validateFiles({ 'src/x.ts': 'const k = process.env.TOKEN;\n' });
+    expect(result.violations.filter((v) => v.rule === 'host-env-access')).toHaveLength(1);
+  });
+
+  it('menerima bundle codegen lengkap Dev Agent (routes, components, stripe)', () => {
+    const bundle = codeBundleFiles('auto-invoice');
+    const result = validateFiles(bundle);
+    expect(result.violations).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(Object.keys(bundle)).toContain('src/lib/stripe.ts');
+    expect(Object.keys(bundle)).toContain('src/routes/invoices.ts');
+    expect(Object.keys(bundle)).toContain('src/components/invoice-summary.ts');
   });
 });

@@ -10,7 +10,9 @@ export class TokenBudgetExceededError extends Error {
     readonly used: number,
     readonly limit: number,
   ) {
-    super(`TOKEN BLEED: run consumed ${used.toLocaleString()} tokens (limit ${limit.toLocaleString()})`);
+    super(
+      `TOKEN BLEED: run consumed ${used.toLocaleString()} tokens (limit ${limit.toLocaleString()})`,
+    );
     this.name = 'TokenBudgetExceededError';
   }
 }
@@ -18,17 +20,25 @@ export class TokenBudgetExceededError extends Error {
 export class TokenBudget {
   private used = 0;
   private killed = false;
+  private readonly divisions: Record<string, number> = {};
 
   constructor(readonly limit: number) {}
 
-  /** Menambah pemakaian; melebihi limit → throw (hard-kill loop). */
-  add(usage: TokenUsage): number {
-    this.used += usage.inputTokens + usage.outputTokens;
+  /** Menambah pemakaian (opsional per divisi); melebihi limit → throw (hard-kill). */
+  add(usage: TokenUsage, division?: string): number {
+    const total = usage.inputTokens + usage.outputTokens;
+    this.used += total;
+    if (division) this.divisions[division] = (this.divisions[division] ?? 0) + total;
     if (this.used > this.limit) {
       this.killed = true;
       throw new TokenBudgetExceededError(this.used, this.limit);
     }
     return this.used;
+  }
+
+  /** Riwayat pemakaian per divisi (PM/Dev/QA…) untuk HUD. */
+  byDivision(): Record<string, number> {
+    return { ...this.divisions };
   }
 
   get total(): number {

@@ -22,13 +22,15 @@ export class FakeSandbox implements SandboxDriver {
   async run(request: SandboxRequest): Promise<SandboxResult> {
     this.calls.push(request);
     const isSafeBuild = JSON.stringify(request.files).includes('safebuild-');
-    const ok =
-      this.mode === 'pass' ? true : this.mode === 'fail' ? false : isSafeBuild;
+    const ok = this.mode === 'pass' ? true : this.mode === 'fail' ? false : isSafeBuild;
 
     return {
       ok,
       driver: this.driver,
-      typeCheck: { ok, errors: ok ? [] : ['src/lib/engine.ts(1,1): TS2304: Cannot find name "boom".'] },
+      typeCheck: {
+        ok,
+        errors: ok ? [] : ['src/lib/engine.ts(1,1): TS2304: Cannot find name "boom".'],
+      },
       tests: { total: ok ? 9 : 8, passed: ok ? 9 : 8, failed: ok ? 0 : 1, durationMs: 12 },
       logs: ok ? 'Tests 9 passed (9)' : 'Tests 1 failed (9)',
       durationMs: 12,

@@ -1,11 +1,14 @@
+import type { BaseCheckpointSaver } from '@langchain/langgraph';
+import { MemorySaver } from '@langchain/langgraph';
+
+import { createControl, GraphHaltedError, type RunControl } from './control';
 import { EventBus } from './events';
-import { buildOrchestrator } from './graph/build';
+import { buildOrchestrator, type Orchestrator } from './graph/build';
 import { initialState } from './graph/state';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
 import type { MemoryProvider } from './memory/provider';
 import { createSandbox } from './sandbox';
-import { slugify } from './slug';
 import { TokenBudget } from './telemetry/tokens';
 import type { Config } from './config';
 import { loadConfig } from './config';
@@ -61,12 +64,24 @@ export interface RunOptions {
   config?: Config;
   emit?: EventBus;
   seed?: boolean;
+  /** Endpoint HALT GRAPH — bila tidak diberikan, dibuat internal (tidak pernah halt). */
+  control?: RunControl;
+  /** Simpan checkpoint tiap langkah agar run bisa di-resume. */
+  checkpointer?: BaseCheckpointSaver;
+  /** Thread id LangGraph (default: id baru). Sama = state tersimpan yang sama. */
+  runId?: string;
 }
 
 export interface RunResult {
   state: RunState;
   events: EventBus;
   tokensUsed: number;
+  /** Riwayat pemakaian token per divisi (PM/Dev/QA). */
+  tokenBreakdown: Record<string, number>;
+  runId: string;
+  control: RunControl;
+  /** Graf bercheckpointer — dipakai `resumeRun` untuk melanjutkan run yang di-halt. */
+  app: Orchestrator;
 }
 
 /** Menjalankan satu siklus penuh: Founder prompt → live URL → sale pertama. */
@@ -77,6 +92,7 @@ export async function runAutonomous(
   const config = options.config ?? loadConfig();
   const events = options.emit ?? new EventBus();
   const budget = new TokenBudget(config.tokenBudget);
+  const control = options.control ?? createControl();
 
   const memory = createMemory(config);
   if (options.seed !== false) await seedMemory(memory);
@@ -87,10 +103,15 @@ export async function runAutonomous(
     sandbox: createSandbox(config),
     emit: events,
     budget,
+    control,
   };
 
-  const runId = `run_${Date.now().toString(36)}`;
-  const app = buildOrchestrator(deps);
+  const runId = options.runId ?? `run_${Date.now().toString(36)}`;
+  // Checkpointer selalu aktif: HALT bisa terjadi kapan saja dan run wajib
+  // bisa di-resume dari state tersimpan (PRD).
+  const checkpointer = options.checkpointer ?? new MemorySaver();
+  const app = buildOrchestrator(deps, { checkpointer });
+  const invokeConfig = { recursionLimit: 64, configurable: { thread_id: runId } };
 
   const initial = initialState({
     runId,
@@ -100,8 +121,42 @@ export async function runAutonomous(
     model: deps.llm.model,
   });
 
-  const state = (await app.invoke(initial, { recursionLimit: 64 })) as RunState;
-  return { state, events, tokensUsed: budget.total };
+  let state: RunState;
+  try {
+    state = (await app.invoke(initial, invokeConfig)) as RunState;
+  } catch (err) {
+    if (!(err instanceof GraphHaltedError)) throw err;
+    // Halt oleh operator: checkpoint tersimpan, stage di-report sebagai 'halted'.
+    const snapshot = await app.getState(invokeConfig);
+    state = { ...(snapshot.values as RunState), stage: 'halted' };
+  }
+
+  return {
+    state,
+    events,
+    tokensUsed: budget.total,
+    tokenBreakdown: budget.byDivision(),
+    runId,
+    control,
+    app,
+  };
+}
+
+/**
+ * Menjalankan ulang run dari state tersimpan (checkpointer PRD).
+ * Untuk run yang di-halt: panggil `control.resume(runId)` dulu (atau lewat
+ * argumen `control`) — LangGraph melanjutkan dari node yang tertunda.
+ */
+export async function resumeRun(
+  app: Orchestrator,
+  runId: string,
+  control?: RunControl,
+): Promise<RunState> {
+  control?.resume(runId);
+  return (await app.invoke(null, {
+    recursionLimit: 64,
+    configurable: { thread_id: runId },
+  })) as RunState;
 }
 
 /** Nama proyek untuk PRD & URL deploy, diturunkan dari prompt Founder. */
@@ -109,7 +164,12 @@ function guessProjectName(prompt: string): string {
   const words = prompt
     .split(/\s+/)
     .filter((w) => /^[a-zA-Z][a-zA-Z0-9'-]*$/.test(w))
-    .filter((w) => !/^(a|an|the|with|for|and|of|that|which|to|in|on|my|our|please|build|make|create)$/i.test(w))
+    .filter(
+      (w) =>
+        !/^(a|an|the|with|for|and|of|that|which|to|in|on|my|our|please|build|make|create)$/i.test(
+          w,
+        ),
+    )
     .slice(0, 4);
   const joined = words.join(' ');
   return joined.trim() || 'AutoInvoice Engine';

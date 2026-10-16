@@ -1,7 +1,10 @@
 import type { SandboxDriver, SandboxRequest, SandboxResult } from './types';
 
 interface E2BSandboxLike {
-  files: { write(path: string, data: string): Promise<unknown>; makeDir(path: string): Promise<unknown> };
+  files: {
+    write(path: string, data: string): Promise<unknown>;
+    makeDir(path: string): Promise<unknown>;
+  };
   commands: {
     run(
       cmd: string,

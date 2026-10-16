@@ -51,7 +51,9 @@ export interface Config {
  * selain itu jatuh ke driver offline — sehingga sistem selalu bisa dijalankan
  * tanpa API key (mode demo/staging) tanpa kode perubahan.
  */
-export function loadConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): Config {
+export function loadConfig(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): Config {
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');

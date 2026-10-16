@@ -1,4 +1,10 @@
-import { END, START, StateGraph } from '@langchain/langgraph';
+import {
+  END,
+  MemorySaver,
+  START,
+  StateGraph,
+  type BaseCheckpointSaver,
+} from '@langchain/langgraph';
 
 import { decideBreaker } from './breaker';
 import {
@@ -13,6 +19,15 @@ import {
 } from './nodes';
 import { RunStateSchema, type RunState } from './state';
 
+export interface BuildOptions {
+  /**
+   * Checkpointer (PRD — "Graph bisa dijalankan ulang dari state tersimpan").
+   * Bila diberikan, setiap langkah node disimpan per `thread_id` sehingga run
+   * bisa dilanjutkan lewat `resumeRun`/`app.invoke(null, {configurable})`.
+   */
+  checkpointer?: BaseCheckpointSaver;
+}
+
 /**
  * Graf siklus LangGraph — PRD §3.
  *
@@ -20,7 +35,7 @@ import { RunStateSchema, type RunState } from './state';
  *                                   ├─ fail & < max ──────→ dev (retry)
  *                                   └─ fail & cycle ke-5 ──→ safebuild → devops
  */
-export function buildOrchestrator(deps: GraphDeps) {
+export function buildOrchestrator(deps: GraphDeps, options: BuildOptions = {}) {
   const graph = new StateGraph(RunStateSchema)
     .addNode('founder', founderNode(deps))
     .addNode('pm', pmNode(deps))
@@ -59,7 +74,9 @@ export function buildOrchestrator(deps: GraphDeps) {
   graph.addEdge('devops', 'growth');
   graph.addEdge('growth', END);
 
-  return graph.compile();
+  return graph.compile(options.checkpointer ? { checkpointer: options.checkpointer } : {});
 }
 
 export type Orchestrator = ReturnType<typeof buildOrchestrator>;
+
+export { MemorySaver };

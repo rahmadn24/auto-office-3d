@@ -19,8 +19,16 @@ describe('circuit breaker guardrail (PRD §3.2)', () => {
   });
 
   it('status breaker untuk HUD: ARMED (n/5)', () => {
-    expect(breakerStatus(2, 5)).toMatchObject({ armed: true, label: 'ARMED (2/5)', exhausted: false });
-    expect(breakerStatus(5, 5)).toMatchObject({ armed: false, label: 'ARMED (5/5)', exhausted: true });
+    expect(breakerStatus(2, 5)).toMatchObject({
+      armed: true,
+      label: 'ARMED (2/5)',
+      exhausted: false,
+    });
+    expect(breakerStatus(5, 5)).toMatchObject({
+      armed: false,
+      label: 'ARMED (5/5)',
+      exhausted: true,
+    });
     expect(cycleLabel(4, 5)).toBe('Cycle 5/5');
   });
 });
@@ -38,7 +46,7 @@ describe('token bleed protection (PRD §6.4)', () => {
     expect(budget.exhausted).toBe(true);
   });
 
-    it('format ala HUD', () => {
+  it('format ala HUD', () => {
     expect(formatTokens(142_800)).toBe('142.8k');
     expect(formatTokens(999)).toBe('999');
     expect(formatTokens(1_250_000)).toBe('1250.0k');

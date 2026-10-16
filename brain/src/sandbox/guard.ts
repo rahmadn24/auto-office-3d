@@ -1,8 +1,11 @@
 /**
  * Prompt-injection & code-poisoning guard — PRD §6.3.
- * Validasi AST/statistik statis ATAS kode sebelum dieksekusi di sandbox:
- * menolak pembacaan filesystem lokal, akses env var host, dan egress jaringan.
+ * Validasi AST (TypeScript compiler API) + pola statis ATAS kode sebelum
+ * dieksekusi di sandbox: menolak pembacaan filesystem lokal, akses env var
+ * host, dan egress jaringan.
  */
+
+import { astViolations } from './astGuard';
 
 export interface GuardViolation {
   rule: string;
@@ -36,7 +39,10 @@ const RULES: Rule[] = [
   { name: 'network-egress', re: /\b(?:fetch|axios|EventSource|WebSocket)\s*\(\s*['"`]https?:\/\// },
   { name: 'dynamic-code', re: /\beval\s*\(|new\s+Function\s*\(/ },
   { name: 'prototype-pollution', re: /__proto__[\s\]]|constructor\s*\[\s*['"]prototype['"]\s*\]/ },
-  { name: 'secret-exfiltration', re: /BEGIN [A-Z ]*PRIVATE KEY|id_rsa|\.aws\/credentials|\.ssh\/id_/ },
+  {
+    name: 'secret-exfiltration',
+    re: /BEGIN [A-Z ]*PRIVATE KEY|id_rsa|\.aws\/credentials|\.ssh\/id_/,
+  },
   { name: 'shell-out', re: /\bexeca\b|\bshell:\s*true\b|\bspawn\s*\(/ },
 ];
 
@@ -44,7 +50,10 @@ const MAX_EXCERPT = 120;
 
 function excerptAt(source: string, index: number): string {
   const from = Math.max(0, index - 40);
-  return source.slice(from, index + MAX_EXCERPT).replace(/\s+/g, ' ').trim();
+  return source
+    .slice(from, index + MAX_EXCERPT)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Menolak path traversal / absolut sebelum file ditulis ke sandbox. */
@@ -68,11 +77,24 @@ export function validateFiles(files: Record<string, string>): GuardResult {
 
   for (const [path, content] of Object.entries(files)) {
     if (!CODE_EXT.test(path)) continue;
+
+    const found: GuardViolation[] = [];
     for (const rule of RULES) {
       const match = rule.re.exec(content);
       if (match && match.index !== undefined) {
-        violations.push({ rule: rule.name, file: path, excerpt: excerptAt(content, match.index) });
+        found.push({ rule: rule.name, file: path, excerpt: excerptAt(content, match.index) });
       }
+    }
+    // Lapisan AST (TS compiler API) menangkap pola yang lolos regex,
+    // lalu hasil gabungan dide-duplikasi per aturan+berkas.
+    found.push(...astViolations(path, content));
+
+    const seen = new Set<string>();
+    for (const violation of found) {
+      const key = `${violation.file}::${violation.rule}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      violations.push(violation);
     }
   }
 

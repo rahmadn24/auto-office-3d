@@ -1,10 +1,22 @@
 /** Kontrak sandbox — PRD §2.1 (isolasi eksekusi) & §6.1 (host isolation). */
 
+export interface CoverageReport {
+  statements: number;
+  branches: number;
+  functions: number;
+  lines: number;
+}
+
+/** Target coverage QA (PRD §3.2): minimal 90% statement. */
+export const COVERAGE_THRESHOLD = 90;
+
 export interface SandboxRequest {
   runId: string;
   /** Map path relatif → isi berkas (hasil codegen Dev Agent). */
   files: Record<string, string>;
   timeoutMs: number;
+  /** Jalankan dengan `vitest run --coverage` (PRD §3.2 — target ≥ 90%). */
+  coverage?: boolean;
 }
 
 export interface TypeCheckReport {
@@ -17,6 +29,7 @@ export interface TestReport {
   passed: number;
   failed: number;
   durationMs: number;
+  coverage?: CoverageReport;
 }
 
 export interface SandboxResult {
