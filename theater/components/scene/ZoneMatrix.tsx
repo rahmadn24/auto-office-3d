@@ -36,8 +36,13 @@ function ZonePlatform({ zone }: { zone: Zone }): ReactNode {
         />
       </mesh>
 
-      {/* Label billboard (DOM overlay, tanpa fetch font eksternal) */}
-      <Html position={[0, 1.5, 0]} center zIndexRange={[20, 0]} className="pointer-events-none">
+      {/* Label billboard di tepi selatan pad (di atas dada agen, tak menutupi kepala) */}
+      <Html
+        position={[0, 1.3, depth / 2 + 0.8]}
+        center
+        zIndexRange={[20, 0]}
+        className="pointer-events-none"
+      >
         <div className="whitespace-nowrap rounded border border-white/10 bg-surface-container-lowest/80 px-2 py-1 font-mono text-label-xs uppercase text-on-surface-variant backdrop-blur">
           <span
             className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"

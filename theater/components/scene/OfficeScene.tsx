@@ -4,6 +4,7 @@ import { Canvas } from '@react-three/fiber';
 import type { ReactNode } from 'react';
 
 import { CAMERA_PRESET, CANVAS_THEME } from '@/lib/zones';
+import { useOffice } from '@/store/officeStore';
 
 import { Floor } from './Floor';
 import { NeuralBus } from './NeuralBus';
@@ -34,16 +35,27 @@ export default function OfficeScene(): ReactNode {
       dpr={[1, 2]}
       camera={{ position, fov: overview.fov, near: 0.1, far: 1000 }}
       gl={{ antialias: true, alpha: true }}
+      onCreated={(state) => {
+        // Eksposur naik 25% — scene PRD bergelap (#051424) tapi objek harus tetap terbaca
+        state.gl.toneMappingExposure = 1.25;
+        if (process.env.NODE_ENV === 'development') {
+          // Hook debug dev-only: dipakai verifikasi browser (scene graph & store)
+          (window as unknown as Record<string, unknown>).__office = {
+            scene: state.scene,
+            store: useOffice,
+          };
+        }
+      }}
     >
       <color attach="background" args={[CANVAS_THEME.background]} />
       <fogExp2 attach="fog" args={[CANVAS_THEME.fogColor, CANVAS_THEME.fogDensity]} />
 
-      {/* Pencahayaan (referensi visual: code.html) */}
-      <ambientLight color="#7388a5" intensity={1.2} />
+      {/* Pencahayaan (referensi visual: code.html) + eksposur agar scene terbaca */}
+      <ambientLight color="#7388a5" intensity={1.7} />
       <directionalLight
         castShadow
         color="#60a5fa"
-        intensity={2}
+        intensity={2.6}
         position={[25, 45, 20]}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
@@ -54,9 +66,9 @@ export default function OfficeScene(): ReactNode {
         shadow-camera-top={35}
         shadow-camera-bottom={-35}
       />
-      <pointLight color="#22d3ee" intensity={3.5} distance={45} position={[-12, 10, -10]} />
-      <pointLight color="#a855f7" intensity={3.5} distance={45} position={[12, 8, 12]} />
-      <pointLight color="#f59e0b" intensity={3} distance={40} position={[10, 8, -12]} />
+      <pointLight color="#22d3ee" intensity={5} distance={45} position={[-12, 10, -10]} />
+      <pointLight color="#a855f7" intensity={5} distance={45} position={[12, 8, 12]} />
+      <pointLight color="#f59e0b" intensity={4} distance={40} position={[10, 8, -12]} />
 
       <Floor />
       <ZoneMatrix />

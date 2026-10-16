@@ -37,8 +37,8 @@ function SpeechBubble({
 
   if (now - runtime.logAt > 6000 || runtime.log.length === 0) return null;
 
-  // Offset vertikal bergantian agar bubble agen berdekatan tidak tumpang tindih
-  const height = 2.35 + (offsetIndex % 3) * 0.45;
+  // Offset vertikal bergantian (0.65) agar bubble agen berdekatan tidak tumpang tindih
+  const height = 2.35 + (offsetIndex % 3) * 0.65;
 
   return (
     <Html position={[0, height, 0]} center zIndexRange={[30, 0]} className="pointer-events-none">
@@ -212,13 +212,18 @@ export function BoxMan({
         {/* Torso */}
         <mesh position={[0, 0.32, 0]} castShadow>
           <boxGeometry args={[0.68, 0.64, 0.38]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.85} />
+          <meshStandardMaterial color="#2b3a50" roughness={0.85} />
         </mesh>
 
-        {/* Rompi warna divisi */}
+        {/* Rompi warna divisi (sedikit berpendar agar terbaca di scene gelap) */}
         <mesh position={[0, 0.28, 0]} castShadow>
           <boxGeometry args={[0.72, 0.42, 0.42]} />
-          <meshStandardMaterial color={entry.color} roughness={0.6} />
+          <meshStandardMaterial
+            color={entry.color}
+            emissive={entry.color}
+            emissiveIntensity={0.35}
+            roughness={0.6}
+          />
         </mesh>
 
         {/* Kepala ber-emissive (pendar naik saat berpikir/mengetik) */}
@@ -226,7 +231,7 @@ export function BoxMan({
           <boxGeometry args={[0.52, 0.52, 0.52]} />
           <meshStandardMaterial
             ref={headMat}
-            color="#dbe4f0"
+            color="#0d1626"
             emissive={entry.color}
             emissiveIntensity={0.6}
             roughness={0.35}
@@ -236,7 +241,7 @@ export function BoxMan({
         {/* Visor */}
         <mesh position={[0, 0.93, 0.27]}>
           <boxGeometry args={[0.38, 0.1, 0.02]} />
-          <meshBasicMaterial color="#0b1626" />
+          <meshBasicMaterial color="#dbe4f0" />
         </mesh>
 
         {/* Lengan (pivot bahu terpisah) */}
