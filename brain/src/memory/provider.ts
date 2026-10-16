@@ -21,6 +21,8 @@ export interface MemoryProvider {
   readonly driver: string;
   upsert(namespace: MemoryNamespace, records: MemoryRecord[]): Promise<void>;
   search(namespace: MemoryNamespace, query: string, topK?: number): Promise<MemoryHit[]>;
+  /** Jumlah vektor per namespace — untuk inspector Vector DB (Fase 5). */
+  sizes(): Promise<Record<string, number>>;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

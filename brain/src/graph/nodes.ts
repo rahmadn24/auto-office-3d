@@ -80,6 +80,26 @@ function appendLog(logs: string[], message: string): string[] {
   return [...logs, `[${timestampMs()}] ${message}`];
 }
 
+/** Siarkan hasil pencarian memori (Vector DB inspector — skor cosine, PRD §2.1). */
+function reportRetrieval(
+  deps: GraphDeps,
+  state: RunState,
+  namespace: string,
+  query: string,
+  hits: Array<{ id: string; score: number }>,
+): void {
+  const top = hits[0];
+  deps.emit.retrieval?.({
+    runId: state.runId,
+    namespace,
+    query: query.slice(0, 80),
+    topId: top?.id ?? null,
+    topScore: top?.score ?? 0,
+    hits: hits.length,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 /**
  * Gerbang HALT GRAPH — setiap node memeriksa kontrol sebelum bekerja.
  * Ketika operator menghentikan run, node melempar `GraphHaltedError`:
@@ -146,6 +166,7 @@ export function pmNode(deps: GraphDeps) {
     const { value: recall, latencyMs } = await timed(async () =>
       deps.memory.search('pm-memory', state.founderPrompt, 3),
     );
+    reportRetrieval(deps, state, 'pm-memory', state.founderPrompt, recall);
     const retrieved = recall.map((h) => h.text);
 
     const result = await deps.llm.complete({
@@ -204,6 +225,7 @@ export function devNode(deps: GraphDeps) {
     const { value: recall } = await timed(async () =>
       deps.memory.search('dev-memory', state.prd || state.founderPrompt, 3),
     );
+    reportRetrieval(deps, state, 'dev-memory', state.prd || state.founderPrompt, recall);
 
     const result = await deps.llm.complete({
       task: 'code',

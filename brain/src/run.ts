@@ -20,6 +20,7 @@ import { createSandbox } from './sandbox';
 import { TokenBudget } from './telemetry/tokens';
 import type { Config } from './config';
 import { loadConfig } from './config';
+import type { ArtifactsPayload } from './types';
 import type { GraphDeps } from './graph/nodes';
 import type { RunState } from './graph/state';
 
@@ -68,6 +69,40 @@ export async function seedMemory(memory: MemoryProvider): Promise<void> {
   ]);
 }
 
+/** Siarkan bundel hasil run (PRD + berkas + diff + QA) ke viewer Artifacts (Fase 5). */
+function emitArtifacts(
+  events: EventBus,
+  state: RunState,
+  founderPrompt: string,
+  tokensUsed: number,
+  durationMs: number,
+): void {
+  if (!events.artifacts || Object.keys(state.artifacts).length === 0) return;
+  const files = Object.entries(state.artifacts)
+    .slice(0, 40)
+    .map(([path, content]) => ({
+      path,
+      content: content.length > 2400 ? `${content.slice(0, 2400)}\n…` : content,
+      diff: state.diffs[path] ?? { status: 'created' as const, added: 0, removed: 0 },
+    }));
+  const payload: ArtifactsPayload = {
+    runId: state.runId,
+    projectName: state.projectName || founderPrompt.slice(0, 40),
+    prd: state.prd,
+    files,
+    qaSummary: state.lastQaSummary,
+    qaPassed: state.qaPassed,
+    cycles: state.iteration,
+    maxCycles: state.maxIterations,
+    tokensUsed,
+    liveUrl: state.liveUrl,
+    repoUrl: state.repoUrl,
+    durationMs,
+    timestamp: new Date().toISOString(),
+  };
+  events.artifacts(payload);
+}
+
 export interface RunOptions {
   config?: Config;
   emit?: EventBus;
@@ -76,6 +111,8 @@ export interface RunOptions {
   control?: RunControl;
   /** Sentinel Stripe bersama (idempoten lintas webhook & run). */
   sentinel?: StripeSentinel;
+  /** Vector memory bersama (dibuat di index) — bila diberikan, tidak dibuat/di-seed ulang. */
+  memory?: MemoryProvider;
   /** Simpan checkpoint tiap langkah agar run bisa di-resume. */
   checkpointer?: BaseCheckpointSaver;
   /** Thread id LangGraph (default: id baru). Sama = state tersimpan yang sama. */
@@ -103,9 +140,11 @@ export async function runAutonomous(
   const events = options.emit ?? new EventBus();
   const budget = new TokenBudget(config.tokenBudget);
   const control = options.control ?? createControl();
+  const runStartedAt = Date.now();
 
-  const memory = createMemory(config);
-  if (options.seed !== false) await seedMemory(memory);
+  const memory = options.memory ?? createMemory(config);
+  // Bila memory dibagikan dari index (untuk snapshot), ia sudah di-seed di sana.
+  if (!options.memory && options.seed !== false) await seedMemory(memory);
 
   const deps: GraphDeps = {
     llm: createLLM(config),
@@ -146,6 +185,8 @@ export async function runAutonomous(
     const snapshot = await app.getState(invokeConfig);
     state = { ...(snapshot.values as RunState), stage: 'halted' };
   }
+
+  emitArtifacts(events, state, founderPrompt, budget.total, Date.now() - runStartedAt);
 
   return {
     state,

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { simulateWebhook } from '@/lib/brainSocket';
+import { GLASS } from '@/lib/ui';
+import { StatusChip } from '@/components/ui/StatusChip';
 import { useBrain } from '@/store/brainStore';
 
 /* ───────────────────────── Primitives ───────────────────────── */
@@ -19,9 +21,7 @@ function Panel({
   accent?: string;
 }): ReactNode {
   return (
-    <section
-      className={`flex min-h-0 flex-col rounded-xl border border-grid-major/60 bg-surface-container-high/80 backdrop-blur-sm ${className}`}
-    >
+    <section className={`flex min-h-0 flex-col rounded-xl ${GLASS} ${className}`}>
       <header className="flex items-center gap-2 border-b border-grid-major/60 px-3 py-2">
         <span
           className="h-1.5 w-1.5 rounded-full"
@@ -234,15 +234,10 @@ function DeploymentPanel(): ReactNode {
   return (
     <Panel title="Active Edge Deployment" accent={online ? '#4edea3' : '#f59e0b'}>
       <div className="mb-2 flex items-center gap-2">
-        <span
-          className="rounded px-1.5 py-0.5 font-mono text-[10px] uppercase"
-          style={{
-            backgroundColor: online ? 'rgba(78,222,163,0.15)' : 'rgba(245,158,11,0.15)',
-            color: online ? '#4edea3' : '#f59e0b',
-          }}
-        >
-          {online ? '● ONLINE' : `● ${(deploy?.status ?? 'IDLE').toUpperCase()}`}
-        </span>
+        <StatusChip
+          label={online ? 'ONLINE' : (deploy?.status ?? 'IDLE').toUpperCase()}
+          color={online ? '#4edea3' : '#f59e0b'}
+        />
         {health?.sslValid ? (
           <span className="font-mono text-[10px] uppercase text-tertiary">SSL VALID</span>
         ) : null}
@@ -359,9 +354,11 @@ function LiveUrlBar(): ReactNode {
   const deploy = useBrain((s) => s.deploy);
   const liveUrl = deploy?.status === 'ready' ? deploy.liveUrl : '';
   return (
-    <div className="pointer-events-auto absolute bottom-3 left-3 z-30 flex items-center gap-2 rounded-full border border-grid-major/60 bg-surface-container-high/85 px-3 py-1.5 font-mono text-mono-label uppercase tracking-wide backdrop-blur-sm">
+    <div
+      className={`pointer-events-auto absolute bottom-16 left-3 z-30 flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-mono-label uppercase tracking-wide md:bottom-3 ${GLASS}`}
+    >
       <span
-        className="h-1.5 w-1.5 rounded-full"
+        className={`h-1.5 w-1.5 rounded-full ${liveUrl ? 'animate-pulse' : ''}`}
         style={{ backgroundColor: liveUrl ? '#4edea3' : '#64748b' }}
       />
       <span className="text-tertiary">LIVE URL</span>
@@ -389,10 +386,12 @@ function LiveUrlBar(): ReactNode {
 /** View "Terminal & Deployments" (kartu 🖥️) — merangkum realtime logs + pipeline. */
 export function TerminalView(): ReactNode {
   return (
-    <div className="relative h-full w-full overflow-hidden bg-canvas-base p-4">
-      <div className="grid h-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div
+      className={`relative h-full w-full overflow-hidden bg-canvas-base p-4 pb-20 md:pb-4 xl:p-8`}
+    >
+      <div className="grid h-full grid-cols-1 gap-3 xl:gap-6 md:grid-cols-2 xl:grid-cols-3">
         <RuntimeBus />
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3 xl:gap-6">
           <CICDPanel />
           <DeploymentPanel />
         </div>

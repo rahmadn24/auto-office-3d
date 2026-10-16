@@ -256,3 +256,87 @@ describe('brainStore: hydrateSnapshot Fase 4', () => {
     expect(s.social).toHaveLength(1);
   });
 });
+
+/* ───────── Fase 5 — retrieval/memory/control/artifacts ───────── */
+
+const retrievalPayload = {
+  runId: 'run_x',
+  namespace: 'pm-memory',
+  query: 'invoice export limit',
+  topId: 'seed:prd-standard',
+  topScore: 0.91,
+  hits: 3,
+  timestamp: '12:00:03.000',
+};
+
+const artifactsPayload = {
+  runId: 'run_x',
+  projectName: 'Invoice AI',
+  prd: '# PRD',
+  files: [
+    {
+      path: 'src/index.ts',
+      content: 'export {};',
+      diff: { status: 'created' as const, added: 12, removed: 0 },
+    },
+  ],
+  qaSummary: 'Passed 18/18 tests · stmts 100%',
+  qaPassed: true,
+  cycles: 1,
+  maxCycles: 5,
+  tokensUsed: 4200,
+  liveUrl: 'invoiceai.vercel.app',
+  repoUrl: 'https://github.com/x/invoiceai',
+  durationMs: 180_000,
+  timestamp: '12:00:03.000',
+};
+
+describe('brainStore: applyRetrieval (stream Vector DB)', () => {
+  it('menyimpan urutan + membatasi 30 terakhir', () => {
+    for (let i = 0; i < 35; i++) {
+      useBrain.getState().applyRetrieval({ ...retrievalPayload, topId: `hit_${i}` });
+    }
+    const s = useBrain.getState();
+    expect(s.retrievals.length).toBe(30);
+    expect(s.retrievals.at(-1)?.topId).toBe('hit_34');
+    useBrain.getState().clearRetrievals();
+    expect(useBrain.getState().retrievals).toHaveLength(0);
+  });
+});
+
+describe('brainStore: applyMemory + applyControl', () => {
+  it('jumlah vektor per namespace tersimpan', () => {
+    useBrain.getState().applyMemory({ 'pm-memory': 2, 'dev-memory': 2 });
+    expect(useBrain.getState().memorySizes['pm-memory']).toBe(2);
+  });
+  it('state halt graph tersimpan', () => {
+    useBrain.getState().applyControl({ haltedAll: true, runIds: ['run_x'] });
+    expect(useBrain.getState().control?.haltedAll).toBe(true);
+  });
+});
+
+describe('brainStore: applyArtifacts (viewer 📄)', () => {
+  it('bundel artifacts tersimpan utuh', () => {
+    useBrain.getState().applyArtifacts(artifactsPayload);
+    const s = useBrain.getState();
+    expect(s.artifacts?.prd).toBe('# PRD');
+    expect(s.artifacts?.files).toHaveLength(1);
+    expect(s.artifacts?.qaPassed).toBe(true);
+  });
+});
+
+describe('brainStore: hydrateSnapshot Fase 5', () => {
+  it('memulihkan retrieval/memory/control/artifacts dari snapshot', () => {
+    useBrain.getState().hydrateSnapshot({
+      retrieval: [retrievalPayload],
+      memory: { 'pm-memory': 2 },
+      control: { haltedAll: false, runIds: [] },
+      artifacts: artifactsPayload,
+    });
+    const s = useBrain.getState();
+    expect(s.retrievals).toHaveLength(1);
+    expect(s.memorySizes['pm-memory']).toBe(2);
+    expect(s.control?.haltedAll).toBe(false);
+    expect(s.artifacts?.runId).toBe('run_x');
+  });
+});

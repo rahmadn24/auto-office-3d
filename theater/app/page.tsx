@@ -2,12 +2,13 @@
 
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 
 import { BrainBridge } from '../components/BrainBridge';
-import { AgentStream, ConnectionBadge } from '../components/overlays/AgentStream';
+import { DivisionSidebar } from '../components/overlays/DivisionSidebar';
+import { AgentStream } from '../components/overlays/AgentStream';
 import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
 import { PerfOverlay } from '../components/overlays/PerfOverlay';
+import { AppShell } from '../components/shell/AppShell';
 
 const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
   ssr: false,
@@ -21,29 +22,22 @@ const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
   ),
 });
 
-/** Halaman utama Theater — kanvas 3D hanya di-mount di client (WebGL tanpa SSR). */
+/**
+ * Tab "Office Theater (3D Live)" — kanvas 3D di dalam shell bersama
+ * (kartu 🧩): header/tab/footer identik antar view, koneksi socket & store
+ * tetap hidup karena tab = client-side route.
+ */
 export default function HomePage(): ReactNode {
   return (
-    <main className="fixed inset-0 overflow-hidden bg-canvas-base">
+    <AppShell>
       <BrainBridge />
       <OfficeScene />
       <CelebrationOverlay />
       <PerfOverlay />
-      {/* Header: badge koneksi Socket.io + ping/latensi (PRD §2.1). */}
-      <div className="pointer-events-none absolute left-3 top-3 z-30">
-        <ConnectionBadge />
-      </div>
-      {/* Nav ke view Terminal & Deployments (kartu 🖥️). */}
-      <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2">
-        <Link
-          href="/terminal"
-          className="pointer-events-auto rounded-full border border-grid-major/60 bg-surface-container-high/85 px-3 py-1.5 font-mono text-mono-label uppercase tracking-wide text-tertiary backdrop-blur-sm transition-colors hover:text-secondary"
-        >
-          TERMINAL &amp; DEPLOYMENTS ↗
-        </Link>
-      </div>
+      {/* Layout DESIGN.md: sidebar divisi kiri (280px desktop / rail tablet). */}
+      <DivisionSidebar />
       {/* Right-rail: Agent Stream feed mentah (PRD §5.1). */}
       <AgentStream />
-    </main>
+    </AppShell>
   );
 }

@@ -12,15 +12,20 @@ import { StripeSentinel, signStripePayload } from '../integrations';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import type {
   AgentStatusPayload,
+  ArtifactsPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
 } from '../types';
+import type { MemoryProvider } from '../memory/provider';
 import {
   parseAgentStatus,
+  parseArtifacts,
   parseDeployUpdate,
   parseFirstSale,
+  parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
 } from './contract';
@@ -37,6 +42,8 @@ export interface BrainServer {
 export interface SocketServerOptions {
   /** Sentinel Stripe bersama (idempoten lintas webhook & run otonom). */
   sentinel?: StripeSentinel;
+  /** Vector memory — untuk menyertakan jumlah vektor per namespace di snapshot. */
+  memory?: MemoryProvider;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -69,6 +76,9 @@ export async function startSocketServer(
   let latestDeploy: DeployUpdatePayload | null = null;
   let latestRevenue: RevenueUpdatePayload | null = null;
   const latestSocial: SocialPostPayload[] = [];
+  const latestRetrievals: MemoryRetrievalPayload[] = [];
+  let latestArtifacts: ArtifactsPayload | null = null;
+  const memory = opts.memory;
 
   // Setelah webhook Stripe diterima → siarkan revenue metrics yang sudah diperbarui.
   function broadcastRevenue(runId: string): void {
@@ -98,6 +108,7 @@ export async function startSocketServer(
         }
         if (req.url === '/control/halt') control.halt(runId);
         else control.resume(runId);
+        io.emit('control:state', control.snapshot());
         bus.agent(
           EventBus.payload({
             runId: 'control',
@@ -205,6 +216,24 @@ export async function startSocketServer(
     latestSocial.push(parsed.payload);
     io.emit('social:post', parsed.payload);
   });
+  const offRetrieval = bus.onRetrieval((payload) => {
+    const parsed = parseMemoryRetrieval(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] memory:retrieval DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestRetrievals.push(parsed.payload);
+    io.emit('memory:retrieval', parsed.payload);
+  });
+  const offArtifacts = bus.onArtifacts((payload) => {
+    const parsed = parseArtifacts(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] artifacts:ready DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestArtifacts = parsed.payload;
+    io.emit('artifacts:ready', parsed.payload);
+  });
 
   io.on('connection', (socket) => {
     socket.emit('system:hello', {
@@ -232,13 +261,17 @@ export async function startSocketServer(
 
     // Snapshot on-demand: klien (re)connect menarik state terakhir sekali —
     // dipakai Theater untuk memulihkan viewport tanpa menunggu event berikutnya.
-    socket.on('state:request', (ack?: (r: unknown) => void) => {
+    socket.on('state:request', async (ack?: (r: unknown) => void) => {
+      const memorySizes = memory ? await memory.sizes().catch(() => ({})) : {};
       const snapshot = {
         agents: [...latestByAgent.values()],
         milestones: latestMilestones.slice(-1),
         deploy: latestDeploy,
         revenue: latestRevenue,
         social: latestSocial.slice(-6),
+        retrieval: latestRetrievals.slice(-20),
+        artifacts: latestArtifacts,
+        memory: memorySizes,
         control: control.snapshot(),
         generatedAt: new Date().toISOString(),
       };
@@ -301,6 +334,7 @@ export async function startSocketServer(
           telemetry: controlTelemetry,
         }),
       );
+      io.emit('control:state', control.snapshot());
       ack?.({ ok: true, control: control.snapshot() });
     });
 
@@ -317,6 +351,7 @@ export async function startSocketServer(
           telemetry: controlTelemetry,
         }),
       );
+      io.emit('control:state', control.snapshot());
       ack?.({ ok: true, control: control.snapshot() });
     });
 
@@ -351,6 +386,8 @@ export async function startSocketServer(
       offDeploy();
       offRevenue();
       offSocial();
+      offRetrieval();
+      offArtifacts();
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     },

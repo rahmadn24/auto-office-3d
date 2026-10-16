@@ -3,8 +3,10 @@ import { create } from 'zustand';
 import type {
   AgentStatusPayload,
   AgentId,
+  ArtifactsPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
 } from '@/lib/events';
@@ -119,6 +121,14 @@ interface BrainStore {
   revenue: RevenueUpdatePayload | null;
   /** Post kampanye sosial terakhir (urut terima, maks 8). */
   social: SocialPostPayload[];
+  /** Stream ingatan semantik terakhir (Vector DB inspector, maks 30). */
+  retrievals: MemoryRetrievalPayload[];
+  /** Jumlah vektor per namespace memori (dari brain). */
+  memorySizes: Record<string, number>;
+  /** State loop kontrol graph (halt/resume) dari brain. */
+  control: { haltedAll: boolean; runIds: string[] } | null;
+  /** Bundel hasil run terakhir (PRD + berkas + QA) untuk viewer Artifacts. */
+  artifacts: ArtifactsPayload | null;
 
   setConnection(status: ConnectionStatus): void;
   setPing(ms: number): void;
@@ -133,8 +143,18 @@ interface BrainStore {
   applyRevenue(payload: RevenueUpdatePayload): void;
   /** Terapkan hasil dispatch kampanye sosial. */
   applySocial(payload: SocialPostPayload): void;
+  /** Terapkan satu hasil pencarian memori (stream Vector DB). */
+  applyRetrieval(payload: MemoryRetrievalPayload): void;
+  /** Perbarui jumlah vektor per namespace. */
+  applyMemory(sizes: Record<string, number>): void;
+  /** Perbarui state loop kontrol (haltedAll). */
+  applyControl(c: { haltedAll: boolean; runIds: string[] }): void;
+  /** Terapkan bundel artifacts:ready (viewer Artifacts & PRD). */
+  applyArtifacts(payload: ArtifactsPayload): void;
   /** Hapus semua baris feed (tombol CLEAR FEED). */
   clearFeed(): void;
+  /** Kosongkan stream retrieval (tombol FlushState). */
+  clearRetrievals(): void;
   /** Ambil ulang snapshot setelah reconnect. */
   hydrateSnapshot(snapshot: {
     agents?: AgentStatusPayload[];
@@ -142,6 +162,10 @@ interface BrainStore {
     deploy?: DeployUpdatePayload | null;
     revenue?: RevenueUpdatePayload | null;
     social?: SocialPostPayload[];
+    retrieval?: MemoryRetrievalPayload[];
+    memory?: Record<string, number>;
+    control?: { haltedAll: boolean; runIds: string[] };
+    artifacts?: ArtifactsPayload | null;
   }): void;
 }
 
@@ -188,6 +212,10 @@ export const useBrain = create<BrainStore>((set, get) => ({
   deploy: null,
   revenue: null,
   social: [],
+  retrievals: [],
+  memorySizes: {},
+  control: null,
+  artifacts: null,
 
   setConnection: (connection) => set({ connection }),
   setPing: (pingMs) => set({ pingMs }),
@@ -268,6 +296,19 @@ export const useBrain = create<BrainStore>((set, get) => ({
 
   clearFeed: () => set({ feed: [] }),
 
+  clearRetrievals: () => set({ retrievals: [] }),
+
+  applyRetrieval: (payload) => {
+    const s = get();
+    set({ retrievals: [...s.retrievals, payload].slice(-30) });
+  },
+
+  applyMemory: (sizes) => set({ memorySizes: sizes }),
+
+  applyControl: (c) => set({ control: c }),
+
+  applyArtifacts: (payload) => set({ artifacts: payload }),
+
   applyDeploy: (payload) => {
     const s = get();
     const item: FeedItem = {
@@ -322,7 +363,17 @@ export const useBrain = create<BrainStore>((set, get) => ({
     });
   },
 
-  hydrateSnapshot: ({ agents, milestones, deploy, revenue, social }) => {
+  hydrateSnapshot: ({
+    agents,
+    milestones,
+    deploy,
+    revenue,
+    social,
+    retrieval,
+    memory,
+    control,
+    artifacts,
+  }) => {
     const s = get();
     const map: Partial<Record<AgentId, AgentStatusPayload>> = { ...s.agents };
     for (const a of agents ?? []) {
@@ -351,6 +402,11 @@ export const useBrain = create<BrainStore>((set, get) => ({
         kind: 'milestone',
       });
     }
+    // Telemetry token terakhir antar agen → pulihkan stat header di fresh load.
+    const tokens = (agents ?? []).reduce(
+      (m, a) => Math.max(m, a.telemetry?.tokensUsed ?? 0),
+      s.tokens,
+    );
     set({
       agents: map,
       hasCustomers,
@@ -358,9 +414,14 @@ export const useBrain = create<BrainStore>((set, get) => ({
       seenSaleIds: seen,
       runStage: deriveRunStage(map),
       feed: feed.slice(0, MAX_FEED),
+      tokens,
       deploy: deploy ?? s.deploy,
       revenue: revenue ?? s.revenue,
       social: social && social.length > 0 ? social.slice(-8) : s.social,
+      retrievals: retrieval && retrieval.length > 0 ? retrieval.slice(-30) : s.retrievals,
+      memorySizes: memory && Object.keys(memory).length > 0 ? memory : s.memorySizes,
+      control: control ?? s.control,
+      artifacts: artifacts ?? s.artifacts,
     });
   },
 }));

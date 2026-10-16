@@ -68,7 +68,7 @@ export function CelebrationOverlay(): ReactNode {
     <>
       {/* Banner milestone */}
       <div
-        className={`pointer-events-none fixed inset-x-0 top-14 z-50 flex justify-center px-4 transition-all duration-500 ${
+        className={`pointer-events-none fixed inset-x-0 top-20 z-50 flex justify-center px-4 transition-all duration-500 ${
           showBanner ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'
         }`}
       >

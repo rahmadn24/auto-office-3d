@@ -70,4 +70,22 @@ export class PineconeMemory implements MemoryProvider {
       };
     });
   }
+
+  /** Jumlah vektor per namespace via describe_index_stats (untuk inspector Vector DB). */
+  async sizes(): Promise<Record<string, number>> {
+    try {
+      const res = await fetch(`${this.host}/describe_index_stats`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return {};
+      const json = (await res.json()) as { namespaces?: Record<string, { vectorCount?: number }> };
+      const out: Record<string, number> = {};
+      for (const [ns, v] of Object.entries(json.namespaces ?? {})) out[ns] = v?.vectorCount ?? 0;
+      return out;
+    } catch {
+      return {};
+    }
+  }
 }

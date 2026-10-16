@@ -130,6 +130,40 @@ export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
 export const SOCIAL_STATUSES = ['published', 'scheduled'] as const;
 export type SocialStatus = (typeof SOCIAL_STATUSES)[number];
 
+/** `memory:retrieval` — stream ingatan semantik untuk inspector Vector DB (PRD §2.1, Milestone #3). */
+export interface MemoryRetrievalPayload {
+  runId: string;
+  namespace: string;
+  query: string;
+  topId: string | null;
+  topScore: number;
+  hits: number;
+  timestamp: string;
+}
+
+export interface ArtifactFileDiff {
+  status: 'created' | 'modified' | 'deleted' | 'unchanged';
+  added: number;
+  removed: number;
+}
+
+/** `artifacts:ready` — bundel hasil run (PRD + berkas + diff + QA) untuk viewer (Fase 5). */
+export interface ArtifactsPayload {
+  runId: string;
+  projectName: string;
+  prd: string;
+  files: Array<{ path: string; content: string; diff: ArtifactFileDiff }>;
+  qaSummary: string;
+  qaPassed: boolean;
+  cycles: number;
+  maxCycles: number;
+  tokensUsed: number;
+  liveUrl: string;
+  repoUrl: string;
+  durationMs: number;
+  timestamp: string;
+}
+
 /** `social:post` — hasil Social Campaign Dispatcher (PRD §3.4). */
 export interface SocialPostPayload {
   runId: string;
