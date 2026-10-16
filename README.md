@@ -29,7 +29,11 @@ auto-office-3d/
 │       ├── llm/            # Provider Claude (Anthropic) / stub deterministik
 │       ├── telemetry/      # Token budget guard (250k)
 │       └── server/         # Socket.io realtime protocol
-└── theater/    # THE THEATER — frontend Next.js/Vite + React Three Fiber (mulai Fase 2)
+├── theater/    # THE THEATER — frontend Next.js 14 + React Three Fiber (Fase 2)
+│   ├── app/                # App Router (layout, page → dynamic mount kanvas)
+│   ├── components/scene/   # OfficeScene, Floor, ZoneMatrix, Furniture, NeuralBus
+│   ├── lib/zones.ts        # Kontrak zone matrix PRD §4.1 (duplikat, boleh)
+│   └── tests/              # Test kontrak zona & kamera (vitest)
 ```
 
 ## Aturan pengembangan (WAJIB)
@@ -67,6 +71,16 @@ npm run lint            # ESLint flat config
 npm run format:check    # Prettier konsisten
 npm run simulate        # 1 prompt Founder → run otonom penuh (mode stub, tanpa API key)
 npm run dev             # start Socket.io daemon di ws://localhost:4800/brain-server
+```
+
+```bash
+cd theater
+npm install
+npm run dev             # 3D viewport di http://localhost:3000
+npm run typecheck       # tsc --noEmit (strict, noUncheckedIndexedAccess)
+npm run lint            # ESLint next/core-web-vitals
+npm test                # test kontrak zona/kamera (vitest)
+npm run build           # next build (produksi)
 ```
 
 ### Loop Controls (HALT GRAPH / RESUME)
