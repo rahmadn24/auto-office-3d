@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "background": "#051424", "on-secondary": "#003824", "secondary-fixed": "#6ffbbe", "on-primary-container": "#0d0096", "surface-container-lowest": "#010f1f", "primary": "#c0c1ff", "surface": "#051424", "error-container": "#93000a", "tertiary-fixed": "#ffddb8", "on-error": "#690005", "on-tertiary-container": "#3e2400", "surface-container-highest": "#273647", "surface-dim": "#051424", "outline": "#908fa0", "error": "#ffb4ab", "surface-variant": "#273647", "primary-fixed-dim": "#c0c1ff", "secondary-container": "#00a572", "on-primary-fixed": "#07006c", "on-secondary-container": "#00311f", "on-tertiary-fixed": "#2a1700", "inverse-on-surface": "#233143", "on-surface-variant": "#c7c4d7", "outline-variant": "#464554", "secondary": "#4edea3", "on-surface": "#d4e4fa", "on-background": "#d4e4fa", "tertiary-fixed-dim": "#ffb95f", "on-tertiary": "#472a00", "primary-fixed": "#e1e0ff", "on-secondary-fixed-variant": "#005236", "surface-container": "#122131", "on-primary-fixed-variant": "#2f2ebe", "surface-bright": "#2c3a4c", "inverse-surface": "#d4e4fa", "tertiary-container": "#ca8100", "inverse-primary": "#494bd6", "primary-container": "#8083ff", "on-error-container": "#ffdad6", "on-tertiary-fixed-variant": "#653e00", "surface-container-high": "#1c2b3c", "on-primary": "#1000a9", "surface-tint": "#c0c1ff", "secondary-fixed-dim": "#4edea3", "surface-container-low": "#0d1c2d", "on-secondary-fixed": "#002113", "tertiary": "#ffb95f" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "margin": "1rem", "margin-desktop": "2rem", "space-xl": "2.5rem", "space-lg": "1.5rem", "gutter-desktop": "1.5rem", "space-xs": "0.25rem", "space-sm": "0.5rem", "space-md": "1rem", "gutter": "1rem" }, "fontFamily": { "headline-lg": ["Plus Jakarta Sans"], "body-sm": ["Inter"], "title-sm": ["Inter"], "headline-xl-mobile": ["Plus Jakarta Sans"], "headline-lg-mobile": ["Plus Jakarta Sans"], "body-md": ["Inter"], "headline-md": ["Plus Jakarta Sans"], "body-lg": ["Inter"], "mono-code": ["JetBrains Mono"], "headline-xl": ["Plus Jakarta Sans"], "label-xs": ["JetBrains Mono"], "mono-label": ["JetBrains Mono"] }, "fontSize": { "headline-lg": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }], "title-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }], "headline-xl-mobile": ["30px", { "lineHeight": "38px", "letterSpacing": "-0.02em", "fontWeight": "700" }], "headline-lg-mobile": ["22px", { "lineHeight": "30px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "body-md": ["14px", { "lineHeight": "22px", "fontWeight": "400" }], "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "body-lg": ["16px", { "lineHeight": "26px", "fontWeight": "400" }], "mono-code": ["13px", { "lineHeight": "20px", "fontWeight": "400" }], "headline-xl": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700" }], "label-xs": ["10px", { "lineHeight": "14px", "letterSpacing": "0.08em", "fontWeight": "600" }], "mono-label": ["11px", { "lineHeight": "16px", "letterSpacing": "0.06em", "fontWeight": "500" }] } } } }</script></head><body class="bg-surface font-body-md text-on-surface antialiased min-h-screen"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 w-full px-gutter-desktop flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-sm"><div class="w-7 h-7 rounded-lg bg-surface-container-high flex items-center justify-center"><span class="material-symbols-outlined text-primary text-[18px]">deployed_code</span></div><span class="font-headline-md text-headline-md text-on-surface tracking-tight">AutoOffice<span class="text-primary">3D</span></span></div><div class="hidden xl:flex items-center gap-space-xs px-space-sm py-space-xs rounded-full bg-surface-container-high text-secondary"><span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span><span class="font-label-xs text-label-xs uppercase text-secondary">Socket.io Connected · Brain v1.4</span></div><div class="hidden 2xl:flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg bg-surface-container-low"><span class="font-mono-label text-mono-label text-tertiary">Autonomous Run #842:</span><span class="font-mono-label text-mono-label text-on-surface-variant">AI Micro-SaaS Studio</span></div></div><nav class="hidden lg:flex items-center gap-space-xs bg-surface-container-lowest/80 p-space-xs rounded-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]" data-active-classes="bg-primary-container text-on-primary-container font-semibold rounded-lg shadow-[0_0_16px_rgba(99,102,241,0.4)]"><a class="px-space-md py-space-xs rounded-lg font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="office-theater-3d-live" href="#">Office Theater (3D Live)</a><a class="px-space-md py-space-xs rounded-lg font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="agent-pipeline-and-state" href="#">Agent Pipeline &amp; State</a><a class="px-space-md py-space-xs rounded-lg font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="artifacts-and-prd" href="#">Artifacts &amp; PRD</a><a class="px-space-md py-space-xs rounded-lg font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="terminal-and-deployments" href="#">Terminal &amp; Deployments</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg bg-surface-container-lowest"><div class="flex items-center gap-space-xs font-mono-label text-mono-label"><span class="text-on-surface-variant">AGENTS:</span><span class="text-secondary font-semibold">5/5</span></div><div class="w-1 h-3 rounded-full bg-surface-container-highest"></div><div class="flex items-center gap-space-xs font-mono-label text-mono-label"><span class="text-on-surface-variant">TOKENS:</span><span class="text-on-surface">142.8k</span></div><div class="w-1 h-3 rounded-full bg-surface-container-highest"></div><div class="flex items-center gap-space-xs font-mono-label text-mono-label"><span class="text-on-surface-variant">PING:</span><span class="text-secondary font-semibold">24ms</span></div></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-surface"><div class="flex flex-col w-full">
+<!-- Interactive Viewport Wrapper with Dual-Realm Architecture (Theater + Brain HUD) -->
+<div class="relative w-full h-[calc(100vh-4rem)] overflow-hidden flex select-none bg-surface-container-lowest">
+<!-- 3D Spatial Canvas Simulation Layer -->
+<div class="relative flex-1 h-full w-full overflow-hidden transition-all duration-700 ease-out" id="spatial-canvas">
+<!-- Living Isometric Floor Grid Overlay -->
+<div class="absolute inset-0 pointer-events-none opacity-40">
+<svg class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="46.188" id="iso-grid-pattern" patterntransform="scale(1.2)" patternunits="userSpaceOnUse" width="80">
+<path class="text-primary/20" d="M 40,0 L 80,23.094 L 40,46.188 L 0,23.094 Z" fill="none" stroke="currentColor" stroke-width="0.6"></path>
+<circle class="text-primary/40" cx="40" cy="23.094" fill="currentColor" r="1.5"></circle>
+</pattern>
+<radialgradient cx="50%" cy="45%" id="center-spot" r="60%">
+<stop offset="0%" stop-color="#122131" stop-opacity="0.8"></stop>
+<stop offset="100%" stop-color="#010f1f" stop-opacity="1"></stop>
+</radialgradient>
+</defs>
+<rect fill="url(#center-spot)" height="100%" width="100%"></rect>
+<rect fill="url(#iso-grid-pattern)" height="100%" width="100%"></rect>
+</svg>
+</div>
+<!-- Isometric 3D World Container (Tilt Matrix) -->
+<div class="absolute left-1/2 top-1/2 w-[1200px] h-[780px] -translate-x-1/2 -translate-y-1/2 transition-transform duration-700 ease-out origin-center" id="isometric-stage" style="transform: translate(-50%, -50%) rotateX(54deg) rotateZ(-38deg) scale(0.96);">
+<!-- Floor Division Glows -->
+<div class="absolute w-[360px] h-[260px] top-[40px] left-[60px] rounded-full bg-primary/10 blur-[60px] pointer-events-none"></div>
+<div class="absolute w-[340px] h-[260px] top-[40px] right-[60px] rounded-full bg-secondary/15 blur-[60px] pointer-events-none"></div>
+<div class="absolute w-[340px] h-[260px] bottom-[40px] left-[60px] rounded-full bg-tertiary/15 blur-[60px] pointer-events-none"></div>
+<div class="absolute w-[320px] h-[240px] bottom-[50px] right-[70px] rounded-full bg-secondary-fixed/10 blur-[50px] pointer-events-none"></div>
+<!-- Central Data Conduit Laser Ring -->
+<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[240px] h-[240px] rounded-full bg-surface-container/60 shadow-[0_0_80px_rgba(192,193,255,0.1)] flex items-center justify-center">
+<div class="w-[180px] h-[180px] rounded-full bg-surface-container-high/40 animate-spin" style="animation-duration: 28s;">
+<div class="w-2 h-2 rounded-full bg-primary-fixed"></div>
+</div>
+<div class="absolute w-28 h-28 rounded-full bg-surface-container-lowest/80 flex flex-col items-center justify-center text-center p-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px] animate-pulse">hub</span>
+<span class="font-label-xs text-label-xs text-primary mt-space-xs">NEURAL BUS</span>
+</div>
+</div>
+<!-- ZONE 1: FOUNDER DESK (Top-Left) -->
+<div class="absolute top-[40px] left-[80px] w-[320px] h-[260px] rounded-xl bg-surface-container-low/75 backdrop-blur-md p-space-md shadow-xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(192,193,255,0.2)]" id="zone-founder">
+<div class="flex items-center justify-between pb-space-sm mb-space-sm bg-surface-container/50 px-space-sm py-space-xs rounded-lg">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+<span class="font-mono-label text-mono-label text-primary uppercase">Zone 01 // Founder Command</span>
+</div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">NODE: 0xFD1</span>
+</div>
+<!-- Low-poly Desk Model Representation -->
+<div class="relative w-full h-[120px] bg-surface-container-high/80 rounded-lg flex items-center justify-center overflow-hidden">
+<!-- Desk Props -->
+<div class="absolute bottom-2 left-6 w-24 h-8 bg-surface-container-highest rounded flex items-center justify-center shadow-md">
+<div class="w-16 h-1 bg-primary/60 rounded"></div>
+</div>
+<div class="absolute bottom-6 left-12 w-14 h-12 bg-surface-container-lowest rounded flex flex-col items-center justify-center shadow-lg">
+<span class="material-symbols-outlined text-[14px] text-primary">terminal</span>
+<div class="w-8 h-1 bg-primary/40 mt-1"></div>
+</div>
+<!-- Founder Low-Poly Avatar Model -->
+<div class="relative flex flex-col items-center z-10 -mt-2">
+<div class="relative">
+<div class="w-8 h-8 rounded-lg bg-primary-container shadow-[0_0_20px_rgba(128,131,255,0.8)] flex items-center justify-center text-on-primary-container font-headline-md text-headline-md">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+</div>
+<div class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-secondary"></div>
+</div>
+<div class="w-10 h-7 rounded-sm bg-surface-container-highest mt-1 shadow-md"></div>
+<!-- Floating Speech / Status -->
+<div class="absolute -top-12 whitespace-nowrap bg-surface-container-lowest/90 px-space-sm py-space-xs rounded-lg shadow-xl text-primary font-mono-code text-mono-code flex items-center gap-space-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span>'Prompt Dispatched: AI Invoice SaaS'</span>
+</div>
+</div>
+</div>
+<!-- Floating In-World Prompt Dock -->
+<div class="mt-space-sm bg-surface-container-lowest/80 p-space-xs rounded-lg flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Directive: Micro-SaaS Invoicing Engine</span>
+<span class="font-label-xs text-label-xs bg-primary/20 text-primary px-space-xs py-0.5 rounded">ACK 200</span>
+</div>
+</div>
+<!-- ZONE 2: MEETING ROOM (Top-Right) -->
+<div class="absolute top-[40px] right-[80px] w-[340px] h-[260px] rounded-xl bg-surface-container-low/75 backdrop-blur-md p-space-md shadow-xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(202,129,0,0.2)]" id="zone-meeting">
+<div class="flex items-center justify-between pb-space-sm mb-space-sm bg-surface-container/50 px-space-sm py-space-xs rounded-lg">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-mono-label text-mono-label text-tertiary uppercase">Zone 02 // Strategy Room</span>
+</div>
+<span class="font-label-xs text-label-xs text-secondary">ACTIVE DEBATE</span>
+</div>
+<!-- Round Holographic Table -->
+<div class="relative w-full h-[140px] flex items-center justify-center">
+<div class="w-32 h-32 rounded-full bg-surface-container-high/90 shadow-[0_0_40px_rgba(255,185,95,0.25)] flex items-center justify-center relative">
+<!-- Holographic projection beam -->
+<div class="w-16 h-16 rounded-full bg-tertiary/15 animate-ping opacity-75"></div>
+<span class="material-symbols-outlined text-tertiary text-[22px] absolute">donut_large</span>
+<!-- PM Agent (Blue) -->
+<div class="absolute -left-7 top-10 flex flex-col items-center">
+<div class="w-6 h-6 rounded-md bg-primary-container shadow-[0_0_12px_rgba(128,131,255,0.7)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[13px] text-on-primary-container">assignment</span>
+</div>
+<div class="w-7 h-5 rounded-sm bg-surface-container-highest mt-0.5"></div>
+</div>
+<!-- Marketing Agent (Purple) -->
+<div class="absolute -right-7 top-10 flex flex-col items-center">
+<div class="w-6 h-6 rounded-md bg-tertiary-container shadow-[0_0_12px_rgba(202,129,0,0.7)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[13px] text-on-tertiary-container">campaign</span>
+</div>
+<div class="w-7 h-5 rounded-sm bg-surface-container-highest mt-0.5"></div>
+</div>
+</div>
+<!-- Floating Dialogue Bubble -->
+<div class="absolute -top-2 left-6 bg-surface-container-lowest/90 px-space-sm py-space-xs rounded-lg shadow-xl text-tertiary font-mono-code text-mono-code flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[13px]">forum</span>
+<span class="truncate max-w-[200px]">PM: 'Synthesizing market pain points...'</span>
+</div>
+</div>
+</div>
+<!-- ZONE 3: DEVELOPER LAB (Bottom-Left) -->
+<div class="absolute bottom-[40px] left-[80px] w-[340px] h-[270px] rounded-xl bg-surface-container-low/75 backdrop-blur-md p-space-md shadow-xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(78,222,163,0.2)]" id="zone-devlab">
+<div class="flex items-center justify-between pb-space-sm mb-space-sm bg-surface-container/50 px-space-sm py-space-xs rounded-lg">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-mono-label text-mono-label text-secondary uppercase">Zone 03 // Core Dev &amp; QA Lab</span>
+</div>
+<span class="font-mono-label text-mono-label text-on-surface-variant">18/18 TESTS</span>
+</div>
+<div class="grid grid-cols-2 gap-space-sm h-[130px] items-center">
+<!-- Workstation A: Dev Agent -->
+<div class="bg-surface-container-high/60 rounded-lg p-space-xs flex flex-col items-center justify-between h-full relative">
+<div class="flex gap-1 w-full justify-center">
+<div class="w-8 h-6 bg-surface-container-lowest rounded shadow flex items-center justify-center">
+<div class="w-5 h-2 bg-secondary/80 rounded-xs"></div>
+</div>
+<div class="w-8 h-6 bg-surface-container-lowest rounded shadow flex items-center justify-center">
+<div class="w-5 h-2 bg-secondary/40 rounded-xs"></div>
+</div>
+</div>
+<!-- Dev Avatar (Emerald) -->
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-md bg-secondary shadow-[0_0_14px_rgba(78,222,163,0.8)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-on-secondary font-bold">code</span>
+</div>
+<div class="w-7 h-4 bg-surface-container-highest rounded-xs mt-0.5"></div>
+</div>
+<span class="font-label-xs text-label-xs text-secondary uppercase">Dev: Coding API</span>
+</div>
+<!-- Workstation B: QA Agent -->
+<div class="bg-surface-container-high/60 rounded-lg p-space-xs flex flex-col items-center justify-between h-full relative">
+<div class="flex items-center gap-1">
+<div class="w-10 h-7 bg-surface-container-lowest rounded shadow flex flex-col items-center justify-center">
+<span class="text-secondary text-[10px] font-mono-code font-bold">PASS</span>
+<div class="w-6 h-0.5 bg-secondary mt-0.5"></div>
+</div>
+</div>
+<!-- QA Avatar (Cyan / Secondary-Fixed) -->
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-md bg-secondary-fixed shadow-[0_0_14px_rgba(111,251,190,0.8)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-on-secondary-container">flaky</span>
+</div>
+<div class="w-7 h-4 bg-surface-container-highest rounded-xs mt-0.5"></div>
+</div>
+<span class="font-label-xs text-label-xs text-secondary-fixed uppercase">QA: Vitest Suite</span>
+</div>
+</div>
+<div class="mt-space-sm bg-surface-container-lowest/90 px-space-sm py-space-xs rounded-lg flex items-center justify-between">
+<span class="font-mono-code text-mono-code text-secondary truncate">TS API: auth/session.route.ts</span>
+<span class="font-label-xs text-label-xs text-secondary bg-secondary/10 px-space-xs py-0.5 rounded">0 ERRORS</span>
+</div>
+</div>
+<!-- ZONE 4: CREATIVE & MARKETING STUDIO (Bottom-Center-Right) -->
+<div class="absolute bottom-[40px] right-[430px] w-[260px] h-[270px] rounded-xl bg-surface-container-low/75 backdrop-blur-md p-space-md shadow-xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(202,129,0,0.2)]" id="zone-marketing">
+<div class="flex items-center justify-between pb-space-sm mb-space-sm bg-surface-container/50 px-space-sm py-space-xs rounded-lg">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed"></span>
+<span class="font-mono-label text-mono-label text-tertiary-fixed uppercase">Zone 04 // Studio</span>
+</div>
+<span class="font-label-xs text-label-xs text-tertiary">STRIPE LIVE</span>
+</div>
+<!-- Studio Desk & Stripe Live Ticker Box -->
+<div class="h-[125px] flex flex-col justify-between">
+<div class="bg-surface-container-highest/80 rounded-lg p-space-xs flex items-center gap-space-sm shadow-sm">
+<div class="w-7 h-7 rounded bg-surface-container-lowest flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary text-[16px]">payments</span>
+</div>
+<div>
+<div class="font-label-xs text-label-xs text-on-surface-variant uppercase">Simulated ARR</div>
+<div class="font-mono-code text-mono-code text-on-surface font-semibold">$1,420.00 /mo</div>
+</div>
+</div>
+<!-- Marketing Avatar -->
+<div class="flex items-center gap-space-sm bg-surface-container-high/50 p-space-xs rounded-lg">
+<div class="w-6 h-6 rounded-md bg-tertiary-container shadow-[0_0_12px_rgba(202,129,0,0.6)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[13px] text-on-tertiary-container">share</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-mono-code text-mono-code text-on-surface truncate">AutoLaunch @ X.com</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant">Scheduled: +2m</span>
+</div>
+</div>
+</div>
+<div class="mt-space-sm bg-surface-container-lowest/80 p-space-xs rounded-lg flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Social Hook Gen</span>
+<span class="font-label-xs text-label-xs bg-tertiary/20 text-tertiary px-space-xs py-0.5 rounded">READY</span>
+</div>
+</div>
+<!-- ZONE 5: DEVOPS TERMINAL HUB (Far Right) -->
+<div class="absolute bottom-[40px] right-[80px] w-[320px] h-[270px] rounded-xl bg-surface-container-low/75 backdrop-blur-md p-space-md shadow-xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(111,251,190,0.25)]" id="zone-devops">
+<div class="flex items-center justify-between pb-space-sm mb-space-sm bg-surface-container/50 px-space-sm py-space-xs rounded-lg">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-secondary animate-ping"></span>
+<span class="font-mono-label text-mono-label text-secondary uppercase">Zone 05 // DevOps Hub</span>
+</div>
+<span class="font-label-xs text-label-xs text-secondary">BEACON ONLINE</span>
+</div>
+<!-- Server Racks with Glowing LEDs -->
+<div class="relative h-[130px] bg-surface-container-lowest/90 rounded-lg p-space-sm flex justify-between items-center overflow-hidden">
+<!-- Cloud Deployment Beam visual effect -->
+<div class="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-transparent via-secondary to-transparent animate-pulse"></div>
+<div class="flex gap-space-xs">
+<!-- Rack 1 -->
+<div class="w-10 h-24 bg-surface-container-high rounded flex flex-col justify-around py-1 px-1">
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-primary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+</div>
+<!-- Rack 2 -->
+<div class="w-10 h-24 bg-surface-container-high rounded flex flex-col justify-around py-1 px-1">
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-primary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+<div class="w-full h-1.5 rounded-xs bg-secondary/80"></div>
+</div>
+</div>
+<!-- DevOps Agent (Amber Aura) -->
+<div class="flex flex-col items-center z-10 mr-2">
+<div class="w-7 h-7 rounded-md bg-tertiary-fixed-dim shadow-[0_0_16px_rgba(255,185,95,0.9)] flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px] text-on-tertiary">cloud_sync</span>
+</div>
+<div class="w-8 h-5 bg-surface-container-highest rounded-xs mt-1"></div>
+<span class="font-label-xs text-label-xs text-tertiary-fixed-dim mt-1 uppercase font-semibold">DevOps</span>
+</div>
+<!-- Vercel Beacon Graphic -->
+<div class="flex flex-col items-center">
+<div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center shadow-lg">
+<svg class="w-4 h-4 text-on-surface" fill="currentColor" viewbox="0 0 24 24">
+<path d="M12 2L2 19.7778H22L12 2Z"></path>
+</svg>
+</div>
+<span class="font-label-xs text-label-xs text-secondary mt-1">DEPLOYED</span>
+</div>
+</div>
+<div class="mt-space-sm bg-surface-container-lowest/80 p-space-xs rounded-lg flex items-center justify-between">
+<span class="font-mono-code text-mono-code text-secondary truncate">Edge Function deployed</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant font-mono-label">120ms</span>
+</div>
+</div>
+</div>
+<!-- Spatial Canvas Visual HUD Elements (Top Left Floating Brand Pill) -->
+<div class="absolute top-space-md left-space-md z-30 flex items-center gap-space-sm bg-surface-container-lowest/80 backdrop-blur-xl px-space-md py-space-xs rounded-xl shadow-xl">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary animate-ping"></span>
+<div class="flex flex-col">
+<span class="font-label-xs text-label-xs uppercase text-on-surface-variant tracking-wider">Simulation Realm</span>
+<span class="font-mono-code text-mono-code text-on-surface font-semibold">Autonomous Office #01 · Isometric Live</span>
+</div>
+</div>
+</div>
+<!-- Right HUD Drawer: Floating Telemetry Inspector & Agent Stream -->
+<aside class="w-[390px] h-full flex flex-col bg-surface-container-lowest/90 backdrop-blur-2xl z-40 shadow-2xl transition-all duration-300" id="agent-hud-drawer">
+<!-- HUD Header & Goal Tracker -->
+<div class="p-space-md bg-surface-container/40 flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">neurology</span>
+<span class="font-headline-md text-headline-md text-on-surface">Agent Stream</span>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-highest/60 px-space-xs py-0.5 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-xs text-label-xs text-secondary uppercase">Sync 100%</span>
+</div>
+</div>
+<!-- Live Goal Tracker Card -->
+<div class="bg-surface-container-high/60 p-space-sm rounded-lg flex flex-col gap-space-xs">
+<div class="flex items-center justify-between font-label-xs text-label-xs">
+<span class="text-tertiary font-semibold uppercase">Autonomous Stage</span>
+<span class="text-on-surface font-mono-label">Phase 2 // Iteration 2/5</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-medium truncate">
+            Engineering &amp; QA Loop: Building auth &amp; invoice generation APIs
+          </p>
+<div class="w-full bg-surface-container-lowest rounded-full h-1.5 overflow-hidden">
+<div class="bg-primary h-full rounded-full transition-all duration-500" style="width: 44%"></div>
+</div>
+</div>
+</div>
+<!-- Camera View Preset Bar -->
+<div class="px-space-md py-space-sm bg-surface-container-low/40 flex flex-col gap-space-xs">
+<span class="font-label-xs text-label-xs uppercase text-on-surface-variant font-medium">Camera Presets &amp; Viewport</span>
+<div class="grid grid-cols-3 gap-space-xs">
+<button class="px-space-xs py-space-xs rounded bg-primary-container text-on-primary-container font-label-xs text-label-xs text-center transition-all shadow-sm" id="cam-iso" onclick="setCamera('iso')">
+            Overview
+          </button>
+<button class="px-space-xs py-space-xs rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-xs text-label-xs text-center transition-all" id="cam-founder" onclick="setCamera('founder')">
+            Founder
+          </button>
+<button class="px-space-xs py-space-xs rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-xs text-label-xs text-center transition-all" id="cam-devlab" onclick="setCamera('devlab')">
+            Dev Lab
+          </button>
+<button class="px-space-xs py-space-xs rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-xs text-label-xs text-center transition-all" id="cam-meeting" onclick="setCamera('meeting')">
+            Meeting
+          </button>
+<button class="px-space-xs py-space-xs rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-xs text-label-xs text-center transition-all" id="cam-devops" onclick="setCamera('devops')">
+            DevOps
+          </button>
+<button class="px-space-xs py-space-xs rounded bg-surface-container-high hover:bg-surface-container-highest text-secondary font-label-xs text-label-xs text-center flex items-center justify-center gap-0.5 transition-all" id="cam-orbit" onclick="toggleOrbit()">
+<span class="material-symbols-outlined text-[12px]">sync</span>
+            Orbit
+          </button>
+</div>
+</div>
+<!-- Live Socket Payload Feed (Scrolling Terminal Console) -->
+<div class="flex-1 overflow-y-auto px-space-md py-space-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between font-label-xs text-label-xs text-on-surface-variant uppercase">
+<span>Realtime Telemetry Events</span>
+<span class="font-mono-label">SOCKET.IO: RAW</span>
+</div>
+<div class="flex flex-col gap-space-sm font-mono-code text-mono-code" id="telemetry-logs">
+<!-- Event 1 -->
+<div class="p-space-sm rounded-lg bg-surface-container-high/40 flex flex-col gap-1 hover:bg-surface-container-high/70 transition-colors">
+<div class="flex items-center justify-between">
+<span class="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-semibold">dev_agent</span>
+<span class="text-on-surface-variant text-[10px]">12:44:02.184</span>
+</div>
+<div class="text-on-surface text-[12px]">action: 'create_route' → targetZone: 'dev_lab'</div>
+<div class="text-secondary text-[11px] truncate">POST /api/v1/invoices/generate (auth guarded)</div>
+</div>
+<!-- Event 2 -->
+<div class="p-space-sm rounded-lg bg-surface-container-high/40 flex flex-col gap-1 hover:bg-surface-container-high/70 transition-colors">
+<div class="flex items-center justify-between">
+<span class="px-1.5 py-0.5 rounded bg-secondary-fixed/20 text-secondary-fixed text-[10px] font-semibold">qa_agent</span>
+<span class="text-on-surface-variant text-[10px]">12:44:00.812</span>
+</div>
+<div class="text-on-surface text-[12px]">action: 'run_tests' → targetZone: 'dev_lab'</div>
+<div class="text-secondary-fixed text-[11px] truncate">Passed 18 test assertions in 340ms</div>
+</div>
+<!-- Event 3 -->
+<div class="p-space-sm rounded-lg bg-surface-container-high/40 flex flex-col gap-1 hover:bg-surface-container-high/70 transition-colors">
+<div class="flex items-center justify-between">
+<span class="px-1.5 py-0.5 rounded bg-tertiary/20 text-tertiary text-[10px] font-semibold">pm_agent</span>
+<span class="text-on-surface-variant text-[10px]">12:43:56.241</span>
+</div>
+<div class="text-on-surface text-[12px]">action: 'dispatch_tasks' → targetZone: 'meeting_room'</div>
+<div class="text-tertiary text-[11px] truncate">Parsed user prompt into 4 granular sprint tasks</div>
+</div>
+<!-- Event 4 -->
+<div class="p-space-sm rounded-lg bg-surface-container-high/40 flex flex-col gap-1 hover:bg-surface-container-high/70 transition-colors">
+<div class="flex items-center justify-between">
+<span class="px-1.5 py-0.5 rounded bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim text-[10px] font-semibold">devops_agent</span>
+<span class="text-on-surface-variant text-[10px]">12:43:48.090</span>
+</div>
+<div class="text-on-surface text-[12px]">action: 'edge_provision' → targetZone: 'devops_hub'</div>
+<div class="text-secondary text-[11px] truncate">Preview deployment: verified 200 OK</div>
+</div>
+</div>
+</div>
+<!-- Agent Division Manifest Footer -->
+<div class="p-space-sm bg-surface-container-low/70 flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="font-label-xs text-label-xs text-on-surface-variant">5/5 Autonomous Workers Ready</span>
+</div>
+<button class="font-mono-label text-mono-label text-on-surface-variant hover:text-on-surface" onclick="clearLogs()">CLEAR FEED</button>
+</div>
+</aside>
+<!-- Bottom Floating Command Bar Dock -->
+<div class="absolute bottom-space-md left-space-md right-[410px] z-30 flex items-center justify-between bg-surface-container-lowest/85 backdrop-blur-2xl p-space-sm rounded-xl shadow-2xl">
+<!-- Left: Ambient Sound & Loop State Toggle -->
+<div class="flex items-center gap-space-sm">
+<button class="w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-container-highest flex items-center justify-center text-on-surface transition-colors" id="sfx-toggle" onclick="toggleAudio()" title="Toggle Office Ambient SFX">
+<span class="material-symbols-outlined text-[18px]" id="sfx-icon">volume_up</span>
+</button>
+<button class="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-secondary text-on-secondary font-headline-md text-body-sm font-semibold transition-all shadow-[0_0_16px_rgba(78,222,163,0.3)]" id="loop-state-btn" onclick="toggleLoop()">
+<span class="material-symbols-outlined text-[18px]" id="loop-icon">pause</span>
+<span id="loop-text">Pause Autonomy</span>
+</button>
+</div>
+<!-- Center: Quick Prompt Injector -->
+<div class="flex-1 max-w-xl mx-space-md">
+<form class="relative flex items-center" onsubmit="injectPrompt(event)">
+<span class="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]">terminal</span>
+<input class="w-full bg-surface-container-high/60 text-on-surface placeholder:text-on-surface-variant/60 font-body-sm text-body-sm pl-10 pr-24 py-space-xs rounded-lg outline-none focus:bg-surface-container-high transition-all" id="prompt-input" placeholder="Inject live directive to Founder (e.g. 'Add Stripe billing webhooks')..." type="text"/>
+<button class="absolute right-1 px-space-sm py-1 rounded bg-primary text-on-primary font-label-xs text-label-xs uppercase font-semibold transition-all" type="submit">
+            Inject
+          </button>
+</form>
+</div>
+<!-- Right: Live Deployment URL Badge -->
+<a class="flex items-center gap-space-xs bg-surface-container-high hover:bg-surface-container-highest px-space-sm py-space-xs rounded-lg transition-colors group" href="https://invoiceai-gen.vercel.app" rel="noopener noreferrer" target="_blank">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<div class="flex flex-col text-left">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase leading-none">Live URL</span>
+<span class="font-mono-code text-mono-code text-secondary group-hover:underline">invoiceai-gen.vercel.app</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[16px]">open_in_new</span>
+</a>
+</div>
+</div>
+</div>
+<script>
+  let isOrbiting = false;
+  let isAudioActive = true;
+  let isLoopActive = true;
+  let orbitInterval = null;
+  let currentAngle = -38;
+
+  function setCamera(zone) {
+    const stage = document.getElementById('isometric-stage');
+    if (!stage) return;
+
+    if (isOrbiting) toggleOrbit();
+
+    // Reset button states
+    const btnIds = ['cam-iso', 'cam-founder', 'cam-devlab', 'cam-meeting', 'cam-devops'];
+    btnIds.forEach(id => {
+      const b = document.getElementById(id);
+      if (b) {
+        b.className = b.className.replace('bg-primary-container text-on-primary-container', 'bg-surface-container-high text-on-surface');
+      }
+    });
+
+    const activeBtn = document.getElementById('cam-' + zone);
+    if (activeBtn) {
+      activeBtn.className = activeBtn.className.replace('bg-surface-container-high text-on-surface', 'bg-primary-container text-on-primary-container font-semibold');
+    }
+
+    switch(zone) {
+      case 'iso':
+        stage.style.transform = "translate(-50%, -50%) rotateX(54deg) rotateZ(-38deg) scale(0.96)";
+        break;
+      case 'founder':
+        stage.style.transform = "translate(-30%, -30%) rotateX(50deg) rotateZ(-30deg) scale(1.4)";
+        break;
+      case 'devlab':
+        stage.style.transform = "translate(-30%, -70%) rotateX(50deg) rotateZ(-42deg) scale(1.4)";
+        break;
+      case 'meeting':
+        stage.style.transform = "translate(-70%, -30%) rotateX(52deg) rotateZ(-35deg) scale(1.35)";
+        break;
+      case 'devops':
+        stage.style.transform = "translate(-70%, -70%) rotateX(52deg) rotateZ(-40deg) scale(1.4)";
+        break;
+    }
+  }
+
+  function toggleOrbit() {
+    const stage = document.getElementById('isometric-stage');
+    const orbitBtn = document.getElementById('cam-orbit');
+    if (!stage || !orbitBtn) return;
+
+    isOrbiting = !isOrbiting;
+
+    if (isOrbiting) {
+      orbitBtn.classList.add('bg-secondary', 'text-on-secondary');
+      orbitBtn.classList.remove('bg-surface-container-high', 'text-secondary');
+      orbitInterval = setInterval(() => {
+        currentAngle = (currentAngle + 0.3) % 360;
+        stage.style.transform = `translate(-50%, -50%) rotateX(54deg) rotateZ(${currentAngle}deg) scale(0.96)`;
+      }, 30);
+    } else {
+      orbitBtn.classList.remove('bg-secondary', 'text-on-secondary');
+      orbitBtn.classList.add('bg-surface-container-high', 'text-secondary');
+      clearInterval(orbitInterval);
+      setCamera('iso');
+    }
+  }
+
+  function toggleAudio() {
+    isAudioActive = !isAudioActive;
+    const icon = document.getElementById('sfx-icon');
+    if (icon) {
+      icon.textContent = isAudioActive ? 'volume_up' : 'volume_off';
+    }
+  }
+
+  function toggleLoop() {
+    isLoopActive = !isLoopActive;
+    const btn = document.getElementById('loop-state-btn');
+    const icon = document.getElementById('loop-icon');
+    const text = document.getElementById('loop-text');
+    if (!btn || !icon || !text) return;
+
+    if (isLoopActive) {
+      btn.className = "flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-secondary text-on-secondary font-headline-md text-body-sm font-semibold transition-all shadow-[0_0_16px_rgba(78,222,163,0.3)]";
+      icon.textContent = "pause";
+      text.textContent = "Pause Autonomy";
+    } else {
+      btn.className = "flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-surface-container-high text-on-surface font-headline-md text-body-sm font-semibold transition-all";
+      icon.textContent = "play_arrow";
+      text.textContent = "Resume Autonomy";
+    }
+  }
+
+  function injectPrompt(e) {
+    e.preventDefault();
+    const input = document.getElementById('prompt-input');
+    if (!input || !input.value.trim()) return;
+
+    const val = input.value.trim();
+    input.value = '';
+
+    const logs = document.getElementById('telemetry-logs');
+    if (logs) {
+      const now = new Date().toTimeString().split(' ')[0] + '.' + Math.floor(Math.random() * 900 + 100);
+      const newCard = document.createElement('div');
+      newCard.className = "p-space-sm rounded-lg bg-primary-container/20 flex flex-col gap-1 transition-colors animate-pulse";
+      newCard.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="px-1.5 py-0.5 rounded bg-primary/30 text-primary text-[10px] font-semibold">human_override</span>
+          <span class="text-on-surface-variant text-[10px]">${now}</span>
+        </div>
+        <div class="text-on-surface text-[12px]">action: 'inject_directive' &rarr; targetZone: 'founder_desk'</div>
+        <div class="text-primary text-[11px] truncate">${val}</div>
+      `;
+      logs.insertBefore(newCard, logs.firstChild);
+    }
+  }
+
+  function clearLogs() {
+    const logs = document.getElementById('telemetry-logs');
+    if (logs) {
+      logs.innerHTML = `
+        <div class="p-space-sm rounded-lg bg-surface-container-high/40 text-on-surface-variant text-center font-label-xs uppercase">
+          Feed cleared · listening on socket channel
+        </div>
+      `;
+    }
+  }
+</script></main></body></html>
