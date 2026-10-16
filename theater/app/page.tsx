@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 
+import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
+
 const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
   ssr: false,
   loading: () => (
@@ -20,6 +22,7 @@ export default function HomePage(): ReactNode {
   return (
     <main className="fixed inset-0 overflow-hidden bg-canvas-base">
       <OfficeScene />
+      <CelebrationOverlay />
     </main>
   );
 }
