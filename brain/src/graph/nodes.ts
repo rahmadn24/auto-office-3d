@@ -1,6 +1,15 @@
 import { GraphHaltedError, type RunControl } from '../control';
 import { diffArtifacts, diffSummary } from '../diff';
 import { EventBus, type Emitter } from '../events';
+import type {
+  DeployDriver,
+  EmailDriver,
+  GitHubDriver,
+  HealthProbe,
+  SocialDriver,
+  StripeSentinel,
+} from '../integrations';
+import { composeLaunchThread, signStripePayload } from '../integrations';
 import { parseFileBundle, type LLMProvider } from '../llm/provider';
 import type { MemoryProvider } from '../memory/provider';
 import type { SandboxDriver } from '../sandbox/types';
@@ -12,6 +21,7 @@ import {
   timestampMs,
   type AgentId,
   type CurrentAction,
+  type DeployUpdatePayload,
   type FirstSalePayload,
   type TargetZone,
 } from '../types';
@@ -26,6 +36,13 @@ export interface GraphDeps {
   budget: TokenBudget;
   /** Endpoint HALT GRAPH (Loop Controls) — opsional. */
   control?: RunControl;
+  /** Integrations (Fase 4) — opsional; bila tak ada, node pakai jalur simulasi. */
+  github?: GitHubDriver;
+  deploy?: DeployDriver;
+  healthProbe?: HealthProbe;
+  social?: SocialDriver;
+  email?: EmailDriver;
+  sentinel?: StripeSentinel;
 }
 
 interface EmitOpts {
@@ -333,29 +350,138 @@ export function safeBuildNode(deps: GraphDeps) {
 
 /* ─────────────────────────── Node: DevOps ──────────────────────────── */
 
+function emitDeploy(deps: GraphDeps, payload: DeployUpdatePayload): void {
+  deps.emit.deploy?.(payload);
+}
+
 export function devopsNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
     haltGate(deps, state);
 
     const slug = slugify(state.projectName);
-    const repoUrl = `https://github.com/autooffice3d/${slug}`;
-    const liveUrl = `${slug}.vercel.app`;
+    const startedAt = new Date().toISOString();
+
+    // 1) GitHub Repository Provisioning (PRD §3.3).
+    let repoUrl = `https://github.com/autooffice3d/${slug}`;
+    let repoOk = true;
+    if (deps.github) {
+      const repo = await deps.github.provisionRepo(slug);
+      repoOk = repo.ok;
+      repoUrl = repo.repoUrl || repoUrl;
+      emitDeploy(deps, {
+        runId: state.runId,
+        repoName: slug,
+        repoUrl,
+        liveUrl: '',
+        status: 'provisioning',
+        buildSteps: [],
+        health: null,
+        uptimeS: 0,
+        bandwidthMb: 0,
+        edgeCache: false,
+        timestamp: startedAt,
+      });
+      emitStatus(
+        deps,
+        state.runId,
+        'devops_agent',
+        'deploying',
+        repo.ok
+          ? `github_provision → ${slug} · retries ${repo.retries} · ${repoUrl}`
+          : `github_provision FAILED · ${slug} · retries ${repo.retries}`,
+        { zone: 'devops_hub' },
+      );
+    }
+
+    // 2) Vercel Edge Deployment (PRD §3.3) — build steps disiarkan bertahap.
+    let liveUrl = `${slug}.vercel.app`;
+    let status: DeployUpdatePayload['status'] = repoOk ? 'deploying' : 'degraded';
+    let buildSteps: DeployUpdatePayload['buildSteps'] = [];
+    let meta = { uptimeS: 0, bandwidthMb: 0, edgeCache: false };
+    if (deps.deploy && repoOk) {
+      const deployed = await deps.deploy.deploy({
+        slug,
+        files: state.artifacts,
+        onStep: (steps, stepStatus) => {
+          buildSteps = steps;
+          emitDeploy(deps, {
+            runId: state.runId,
+            repoName: slug,
+            repoUrl,
+            liveUrl: stepStatus === 'ready' ? `${slug}.vercel.app` : '',
+            status: stepStatus,
+            buildSteps: steps,
+            health: null,
+            ...meta,
+            timestamp: new Date().toISOString(),
+          });
+        },
+      });
+      liveUrl = deployed.liveUrl || liveUrl;
+      status = deployed.status;
+      buildSteps = deployed.buildSteps;
+      meta = {
+        uptimeS: deployed.uptimeS,
+        bandwidthMb: deployed.bandwidthMb,
+        edgeCache: deployed.edgeCache,
+      };
+    } else if (repoOk) {
+      // Tanpa driver (jalur simulasi/test) → deploy dianggap sukses.
+      status = 'ready';
+      meta = { uptimeS: 0, bandwidthMb: 0.12, edgeCache: true };
+    }
+
+    // 3) Health Check Probe (PRD §3.3) — hanya jika deploy sukses.
+    let health: DeployUpdatePayload['health'] = null;
+    if (deps.healthProbe && status === 'ready') {
+      health = await deps.healthProbe.probe(liveUrl);
+      if (!health.rootOk || !health.apiOk) {
+        status = 'degraded';
+      }
+    }
+
+    emitDeploy(deps, {
+      runId: state.runId,
+      repoName: slug,
+      repoUrl,
+      liveUrl: status === 'ready' ? liveUrl : '',
+      status,
+      buildSteps,
+      health,
+      ...meta,
+      degradedReason: status === 'degraded' ? 'health check failed' : undefined,
+      timestamp: new Date().toISOString(),
+    });
+
+    const healthText = health
+      ? health.rootOk && health.apiOk
+        ? `health 200 OK · TTFB ${health.ttfbMs}ms${health.sslValid ? ' · SSL' : ''}`
+        : 'health DEGRADED'
+      : 'health 200 OK';
 
     emitStatus(
       deps,
       state.runId,
       'devops_agent',
       'deploying',
-      `edge_provision → repo ${slug} · build READY · health 200 OK · https://${liveUrl}`,
+      status === 'ready'
+        ? `edge_provision → repo ${slug} · build READY · ${healthText} · https://${liveUrl}`
+        : `edge_provision DEGRADED → ${slug} · ${healthText}`,
       { zone: 'devops_hub' },
     );
 
+    const healthOk = health ? health.rootOk && health.apiOk : true;
     return {
-      stage: 'deploying',
+      stage: status === 'ready' ? 'deploying' : 'failed',
       repoUrl,
-      liveUrl,
-      healthOk: true,
-      logs: appendLog(state.logs, `DEVOPS · deployed https://${liveUrl} (health 200 OK)`),
+      liveUrl: status === 'ready' ? liveUrl : '',
+      healthOk: status === 'ready' && healthOk,
+      logs: appendLog(
+        state.logs,
+        status === 'ready'
+          ? `DEVOPS · deployed https://${liveUrl} (${healthText})`
+          : `DEVOPS · deployment DEGRADED (${slug})`,
+      ),
       latencyMs: 0,
     };
   };
@@ -367,41 +493,122 @@ export function growthNode(deps: GraphDeps) {
   return async (state: RunState): Promise<RunStatePatch> => {
     haltGate(deps, state);
 
+    // 1) Social Campaign Dispatcher (PRD §3.4) — susun thread + dispatch.
+    const { thread, hook } = composeLaunchThread({
+      projectName: state.projectName,
+      founderPrompt: state.founderPrompt,
+      liveUrl: state.liveUrl || `${slugify(state.projectName)}.vercel.app`,
+    });
+    let socialSummary = 'Launch thread dispatched to X/Twitter + Meta Threads';
+    if (deps.social) {
+      const posts = await deps.social.dispatch({ runId: state.runId, thread, hook });
+      for (const post of posts) deps.emit.social?.(post);
+      socialSummary = posts
+        .map((p) => `${p.platform.toUpperCase()} ${p.status} (${p.queueId})`)
+        .join(' · ');
+    }
+
     emitStatus(
       deps,
       state.runId,
       'marketing_agent',
       'marketing',
-      'Launch thread dispatched to X/Twitter + Meta Threads · listening for Stripe webhook',
+      `${socialSummary} · listening for Stripe webhook`,
       { zone: 'marketing_studio' },
     );
 
-    // Simulasi webhook Stripe pertama (Fase 4 menghubungkan listener nyata).
-    const sale: FirstSalePayload = {
-      runId: state.runId,
-      customer: { city: 'San Francisco', country: 'US', maskedEmail: 'a***@founderscaled.io' },
-      amount: 29,
-      currency: 'USD',
-      stripeEventId: `evt_${state.runId}`,
-      hasCustomers: true,
-      timestamp: new Date().toISOString(),
-    };
-    deps.emit.milestone(sale);
+    // 2) Stripe Webhook Sentinel (PRD §3.4) — transaksi pertama $29.00 ARR.
+    // Simulasi event checkout.session.completed (ber-signature) → sentinel.
+    const sale = receiveSimulatedSale(deps, state);
+    if (sale) {
+      emitStatus(
+        deps,
+        state.runId,
+        'marketing_agent',
+        'celebrating',
+        `FIRST CUSTOMER ACQUIRED ($${sale.amount.toFixed(2)} ARR) → hasCustomers = true · CELEBRATE broadcast`,
+        { zone: 'central_bus' },
+      );
 
-    emitStatus(
-      deps,
-      state.runId,
-      'marketing_agent',
-      'celebrating',
-      'FIRST CUSTOMER ACQUIRED ($29.00 ARR) → hasCustomers = true · CELEBRATE broadcast',
-      { zone: 'central_bus' },
-    );
+      // 3) Welcome email otomatis ke pembeli (PRD §3.4 (3)).
+      if (deps.email) {
+        const sent = await deps.email.send({
+          to: sale.customer.maskedEmail,
+          subject: `Welcome to ${state.projectName} 🎉`,
+          body: `Thanks for your first purchase ($${sale.amount.toFixed(2)} ${sale.currency}). Your product is live at ${state.liveUrl}.`,
+        });
+        if (sent.sent) {
+          emitStatus(
+            deps,
+            state.runId,
+            'marketing_agent',
+            'marketing',
+            `auto-welcome dispatched → ${sale.customer.maskedEmail} (${sent.id}) · autonomous loop Stripe → [MKT] → email`,
+            { zone: 'marketing_studio' },
+          );
+        }
+      }
+    }
+
+    // 4) Revenue metrics → panel Sales & Webhook Sentinel.
+    if (deps.sentinel) {
+      const metrics = deps.sentinel.metrics();
+      deps.emit.revenue?.({
+        ...metrics,
+        runId: state.runId,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return {
       stage: 'done',
-      hasCustomers: true,
-      logs: appendLog(state.logs, 'MILESTONE · first sale captured → CELEBRATE global'),
+      hasCustomers: Boolean(sale),
+      logs: appendLog(
+        state.logs,
+        sale
+          ? `MILESTONE · first sale captured → CELEBRATE global · ${socialSummary}`
+          : `GROWTH · dispatched ${socialSummary} (no sale yet)`,
+      ),
       latencyMs: 0,
     };
   };
+}
+
+/** Membangun event Stripe simulasi, menandatangani, lalu menyerahkannya ke sentinel. */
+function receiveSimulatedSale(deps: GraphDeps, state: RunState): FirstSalePayload | null {
+  const event = {
+    id: `evt_${state.runId}`,
+    type: 'checkout.session.completed',
+    created: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        amount_total: 2900,
+        currency: 'usd',
+        customer: 'cus_first_founder',
+        customer_details: {
+          email: 'buyer@founderscaled.io',
+          address: { city: 'San Francisco', country: 'US' },
+        },
+      },
+    },
+  };
+  const rawBody = JSON.stringify(event);
+  if (!deps.sentinel) {
+    // Tanpa sentinel, pertahankan perilaku simulasi lama (milestone tetap naik).
+    const fallback: FirstSalePayload = {
+      runId: state.runId,
+      customer: { city: 'San Francisco', country: 'US', maskedEmail: 'b***@founderscaled.io' },
+      amount: 29,
+      currency: 'USD',
+      stripeEventId: event.id,
+      hasCustomers: true,
+      timestamp: new Date().toISOString(),
+    };
+    deps.emit.milestone(fallback);
+    return fallback;
+  }
+  const sig = signStripePayload(rawBody, deps.sentinel.webhookSecret ?? 'whsec_offline');
+  const sale = deps.sentinel.receive(rawBody, sig, state.runId);
+  if (sale) deps.emit.milestone(sale);
+  return sale;
 }

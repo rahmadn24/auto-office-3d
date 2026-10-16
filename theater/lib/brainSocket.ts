@@ -2,7 +2,14 @@
 
 import { io, type Socket } from 'socket.io-client';
 
-import { parseAgentStatus, parseFirstSale, type AgentStatusPayload } from '@/lib/events';
+import {
+  parseAgentStatus,
+  parseDeployUpdate,
+  parseFirstSale,
+  parseRevenueUpdate,
+  parseSocialPost,
+  type AgentStatusPayload,
+} from '@/lib/events';
 import { useBrain } from '@/store/brainStore';
 import { AGENT_ROSTER, useOffice, type AnimState, type AgentId } from '@/store/officeStore';
 import { ZONE_BY_KEY, type ZoneKey } from '@/lib/zones';
@@ -128,6 +135,9 @@ export function connectBrain(): Socket {
     const s = snapshot as {
       agents?: unknown[];
       milestones?: unknown[];
+      deploy?: unknown;
+      revenue?: unknown;
+      social?: unknown[];
     } | null;
     if (!s) return;
     const agents = (s.agents ?? [])
@@ -138,7 +148,19 @@ export function connectBrain(): Socket {
       .map((m) => parseFirstSale(m))
       .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
       .map((r) => r.payload);
-    useBrain.getState().hydrateSnapshot({ agents, milestones });
+    const deploy = s.deploy ? parseDeployUpdate(s.deploy) : null;
+    const revenue = s.revenue ? parseRevenueUpdate(s.revenue) : null;
+    const social = (s.social ?? [])
+      .map((p) => parseSocialPost(p))
+      .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+      .map((r) => r.payload);
+    useBrain.getState().hydrateSnapshot({
+      agents,
+      milestones,
+      deploy: deploy && deploy.ok ? deploy.payload : null,
+      revenue: revenue && revenue.ok ? revenue.payload : null,
+      social,
+    });
     for (const a of agents) bridgeTo3D(a.agentId, a);
   });
 
@@ -163,7 +185,39 @@ export function connectBrain(): Socket {
     if (applied) useOffice.getState().celebrateAll(`FIRST SALE · ${parsed.payload.customer.city}`);
   });
 
+  socket.on('deploy:update', (raw: unknown) => {
+    const parsed = parseDeployUpdate(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] deploy:update DITOLAK:', parsed.issues);
+      return;
+    }
+    useBrain.getState().applyDeploy(parsed.payload);
+  });
+
+  socket.on('revenue:update', (raw: unknown) => {
+    const parsed = parseRevenueUpdate(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] revenue:update DITOLAK:', parsed.issues);
+      return;
+    }
+    useBrain.getState().applyRevenue(parsed.payload);
+  });
+
+  socket.on('social:post', (raw: unknown) => {
+    const parsed = parseSocialPost(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] social:post DITOLAK:', parsed.issues);
+      return;
+    }
+    useBrain.getState().applySocial(parsed.payload);
+  });
+
   return socket;
+}
+
+/** SIMULATE WEBHOOK (kartu 💳) — minta Brain memancarkan transaksi $29 demo. */
+export function simulateWebhook(runId?: string): void {
+  socket?.emit('stripe:simulate', { runId: runId ?? 'simulated_run' });
 }
 
 export function getBrainSocket(): Socket | null {

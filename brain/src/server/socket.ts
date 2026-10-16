@@ -8,9 +8,22 @@ import { Server } from 'socket.io';
 import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
 import { EventBus } from '../events';
+import { StripeSentinel, signStripePayload } from '../integrations';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
-import type { AgentStatusPayload, FirstSalePayload } from '../types';
-import { parseAgentStatus, parseFirstSale } from './contract';
+import type {
+  AgentStatusPayload,
+  DeployUpdatePayload,
+  FirstSalePayload,
+  RevenueUpdatePayload,
+  SocialPostPayload,
+} from '../types';
+import {
+  parseAgentStatus,
+  parseDeployUpdate,
+  parseFirstSale,
+  parseRevenueUpdate,
+  parseSocialPost,
+} from './contract';
 
 export interface BrainServer {
   io: Server;
@@ -19,6 +32,11 @@ export interface BrainServer {
   url: string;
   control: RunControl;
   close(): Promise<void>;
+}
+
+export interface SocketServerOptions {
+  /** Sentinel Stripe bersama (idempoten lintas webhook & run otonom). */
+  sentinel?: StripeSentinel;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -36,13 +54,27 @@ function readBody(req: IncomingMessage): Promise<string> {
  * Endpoint: ws://localhost:4800/brain-server
  * Loop Controls: event `control:halt`/`control:resume` + HTTP POST /control/halt
  */
-export async function startSocketServer(config: Config, bus: EventBus): Promise<BrainServer> {
+export async function startSocketServer(
+  config: Config,
+  bus: EventBus,
+  opts: SocketServerOptions = {},
+): Promise<BrainServer> {
   const control = createControl();
   const controlTelemetry = { tokensUsed: 0, latencyMs: 0, model: config.llmDriver };
+  const sentinel = opts.sentinel ?? new StripeSentinel(config.stripeWebhookSecret);
 
-  // Status terakhir tiap agen + milestone — dipakai snapshot saat (re)connect.
+  // Status terakhir tiap agen + milestone + integrasi — dipakai snapshot saat (re)connect.
   const latestByAgent = new Map<string, AgentStatusPayload>();
   const latestMilestones: FirstSalePayload[] = [];
+  let latestDeploy: DeployUpdatePayload | null = null;
+  let latestRevenue: RevenueUpdatePayload | null = null;
+  const latestSocial: SocialPostPayload[] = [];
+
+  // Setelah webhook Stripe diterima → siarkan revenue metrics yang sudah diperbarui.
+  function broadcastRevenue(runId: string): void {
+    const metrics = sentinel.metrics();
+    bus.revenue({ ...metrics, runId, timestamp: new Date().toISOString() });
+  }
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     if (req.url === '/health') {
@@ -78,6 +110,29 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
         );
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true, control: control.snapshot() }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/webhook/stripe') {
+      // Stripe Webhook Sentinel (PRD §3.4) — verifikasi signature HMAC SHA-256
+      // lalu terjemahkan transaksi pertama jadi milestone:first_sale + revenue.
+      void readBody(req).then((body) => {
+        const sig = (req.headers['stripe-signature'] as string | undefined) ?? '';
+        const sale = sentinel.receive(body, sig, 'webhook');
+        if (sale) bus.milestone(sale);
+        broadcastRevenue(sale?.runId ?? 'webhook');
+        res.writeHead(sentinel.lastSignatureVerified || !config.stripeWebhookSecret ? 200 : 401, {
+          'content-type': 'application/json',
+        });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            received: true,
+            signatureVerified: sentinel.lastSignatureVerified,
+            firstSale: Boolean(sale),
+            metrics: sentinel.metrics(),
+          }),
+        );
       });
       return;
     }
@@ -123,15 +178,47 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
     latestMilestones.push(parsed.payload);
     io.emit('milestone:first_sale', parsed.payload);
   });
+  const offDeploy = bus.onDeploy((payload) => {
+    const parsed = parseDeployUpdate(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] deploy:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestDeploy = parsed.payload;
+    io.emit('deploy:update', parsed.payload);
+  });
+  const offRevenue = bus.onRevenue((payload) => {
+    const parsed = parseRevenueUpdate(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] revenue:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestRevenue = parsed.payload;
+    io.emit('revenue:update', parsed.payload);
+  });
+  const offSocial = bus.onSocial((payload) => {
+    const parsed = parseSocialPost(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] social:post DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    latestSocial.push(parsed.payload);
+    io.emit('social:post', parsed.payload);
+  });
 
   io.on('connection', (socket) => {
     socket.emit('system:hello', {
       service: 'brain',
-      version: '1.5',
+      version: '1.6',
       drivers: {
         llm: config.llmDriver,
         memory: config.memoryDriver,
         sandbox: config.sandboxDriver,
+        deploy: config.deployDriver,
+        github: config.githubToken ? 'github' : 'local',
+        email: config.emailDriver,
+        social: config.socialDriver,
+        stripe: config.stripeWebhookSecret ? 'webhook' : 'simulate',
       },
       limits: {
         maxIterations: config.maxIterations,
@@ -149,11 +236,50 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
       const snapshot = {
         agents: [...latestByAgent.values()],
         milestones: latestMilestones.slice(-1),
+        deploy: latestDeploy,
+        revenue: latestRevenue,
+        social: latestSocial.slice(-6),
         control: control.snapshot(),
         generatedAt: new Date().toISOString(),
       };
       socket.emit('state:snapshot', snapshot);
       ack?.({ ok: true, snapshot });
+    });
+
+    // SIMULATE WEBHOOK (kartu 💳) — demo transaksi $29 tanpa Stripe nyata.
+    socket.on('stripe:simulate', (input: unknown, ack?: (r: unknown) => void) => {
+      const runId =
+        (input as { runId?: unknown } | undefined)?.runId &&
+        typeof (input as { runId?: unknown }).runId === 'string'
+          ? (input as { runId: string }).runId
+          : 'simulated_run';
+      const event = {
+        id: `evt_sim_${Date.now().toString(36)}`,
+        type: 'checkout.session.completed',
+        created: Math.floor(Date.now() / 1000),
+        data: {
+          object: {
+            amount_total: 2900,
+            currency: 'usd',
+            customer: `cus_sim_${Math.floor(Math.random() * 1e6)}`,
+            customer_details: {
+              email: 'demo.buyer@founderscaled.io',
+              address: { city: 'San Francisco', country: 'US' },
+            },
+          },
+        },
+      };
+      const rawBody = JSON.stringify(event);
+      const sig = signStripePayload(rawBody, config.stripeWebhookSecret ?? 'whsec_offline');
+      const sale = sentinel.receive(rawBody, sig, runId);
+      if (sale) bus.milestone(sale);
+      broadcastRevenue(runId);
+      ack?.({
+        ok: true,
+        signatureVerified: sentinel.lastSignatureVerified,
+        firstSale: Boolean(sale),
+        metrics: sentinel.metrics(),
+      });
     });
 
     // Ping round-trip untuk badge PING xxms (PRD §2.1) — klien minta echo,
@@ -222,6 +348,9 @@ export async function startSocketServer(config: Config, bus: EventBus): Promise<
     async close() {
       offAgent();
       offMilestone();
+      offDeploy();
+      offRevenue();
+      offSocial();
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     },

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 import { BrainBridge } from '../components/BrainBridge';
 import { AgentStream, ConnectionBadge } from '../components/overlays/AgentStream';
@@ -31,6 +32,15 @@ export default function HomePage(): ReactNode {
       {/* Header: badge koneksi Socket.io + ping/latensi (PRD §2.1). */}
       <div className="pointer-events-none absolute left-3 top-3 z-30">
         <ConnectionBadge />
+      </div>
+      {/* Nav ke view Terminal & Deployments (kartu 🖥️). */}
+      <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2">
+        <Link
+          href="/terminal"
+          className="pointer-events-auto rounded-full border border-grid-major/60 bg-surface-container-high/85 px-3 py-1.5 font-mono text-mono-label uppercase tracking-wide text-tertiary backdrop-blur-sm transition-colors hover:text-secondary"
+        >
+          TERMINAL &amp; DEPLOYMENTS ↗
+        </Link>
       </div>
       {/* Right-rail: Agent Stream feed mentah (PRD §5.1). */}
       <AgentStream />

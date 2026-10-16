@@ -70,6 +70,79 @@ export interface FirstSalePayload {
   timestamp: string;
 }
 
+/* ───────── Fase 4 — Integrations & Revenue Loop (PRD §3.3, §3.4) ───────── */
+
+export const DEPLOY_STATUSES = [
+  'provisioning',
+  'building',
+  'deploying',
+  'ready',
+  'degraded',
+] as const;
+export type DeployStatus = (typeof DEPLOY_STATUSES)[number];
+
+export const BUILD_STEP_STATUSES = ['pending', 'running', 'done'] as const;
+export type BuildStepStatus = (typeof BUILD_STEP_STATUSES)[number];
+
+export interface BuildStep {
+  label: string;
+  status: BuildStepStatus;
+}
+
+export interface HealthReport {
+  rootOk: boolean;
+  apiOk: boolean;
+  sslValid: boolean;
+  ttfbMs: number;
+}
+
+/** `deploy:update` — pipeline GitHub → Vercel → Health Check (PRD §3.3). */
+export interface DeployUpdatePayload {
+  runId: string;
+  repoName: string;
+  repoUrl: string;
+  liveUrl: string;
+  status: DeployStatus;
+  buildSteps: BuildStep[];
+  health: HealthReport | null;
+  uptimeS: number;
+  bandwidthMb: number;
+  edgeCache: boolean;
+  degradedReason?: string;
+  timestamp: string;
+}
+
+/** `revenue:update` — metrik Stripe Webhook Sentinel (PRD §3.4). */
+export interface RevenueUpdatePayload {
+  runId: string;
+  activeVisitors: number;
+  checkoutSessions: number;
+  grossRevenueArr: number;
+  salesCount: number;
+  lastStripeEvent: string;
+  signatureVerified: boolean;
+  timestamp: string;
+}
+
+export const SOCIAL_PLATFORMS = ['x', 'threads'] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+export const SOCIAL_STATUSES = ['published', 'scheduled'] as const;
+export type SocialStatus = (typeof SOCIAL_STATUSES)[number];
+
+/** `social:post` — hasil Social Campaign Dispatcher (PRD §3.4). */
+export interface SocialPostPayload {
+  runId: string;
+  platform: SocialPlatform;
+  status: SocialStatus;
+  queueId: string;
+  thread: string[];
+  hook: string;
+  metrics: { impressions: number; clicks: number; retweets: number };
+  sentiment: 'positive' | 'neutral' | 'negative';
+  timestamp: string;
+}
+
 /** PRD §4.1 — Zone Coordinates Matrix (origin di pusat Neural Bus). */
 export const ZONE_COORDINATES: Record<TargetZone, { x: number; y: number; z: number }> = {
   founder_desk: { x: -14, y: 0.4, z: 14 },

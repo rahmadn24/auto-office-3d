@@ -1,5 +1,6 @@
 import { loadConfig } from './config';
 import { EventBus } from './events';
+import { StripeSentinel } from './integrations';
 import { runAutonomous } from './run';
 import { startSocketServer } from './server/socket';
 import { formatTokens } from './telemetry/tokens';
@@ -13,15 +14,17 @@ import { formatTokens } from './telemetry/tokens';
 async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
-  const server = await startSocketServer(config, bus);
+  const sentinel = new StripeSentinel(config.stripeWebhookSecret);
+  const server = await startSocketServer(config, bus, { sentinel });
 
   console.log('┌──────────────────────────────────────────────────────────────┐');
-  console.log('│  AutoOffice3D · THE BRAIN daemon v1.4                        │');
+  console.log('│  AutoOffice3D · THE BRAIN daemon v1.6                        │');
   console.log('└──────────────────────────────────────────────────────────────┘');
   console.log(`  socket       ${server.url}`);
   console.log(`  health       http://localhost:${server.port}/health`);
+  console.log(`  webhook      http://localhost:${server.port}/webhook/stripe`);
   console.log(
-    `  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver}`,
+    `  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver} deploy=${config.deployDriver} social=${config.socialDriver}`,
   );
   console.log(
     `  guardrails   breaker=${config.maxIterations}x · token budget=${formatTokens(config.tokenBudget)}`,
@@ -31,7 +34,7 @@ async function main(): Promise<void> {
   if (prompt) {
     console.log(`\n  founder      "${prompt}"\n`);
     const started = Date.now();
-    const { state, tokensUsed } = await runAutonomous(prompt, { config, emit: bus });
+    const { state, tokensUsed } = await runAutonomous(prompt, { config, emit: bus, sentinel });
     console.log(
       `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
     );

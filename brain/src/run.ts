@@ -5,6 +5,14 @@ import { createControl, GraphHaltedError, type RunControl } from './control';
 import { EventBus } from './events';
 import { buildOrchestrator, type Orchestrator } from './graph/build';
 import { initialState } from './graph/state';
+import {
+  createDeploy,
+  createEmail,
+  createGitHub,
+  createHealthProbe,
+  createSocial,
+  StripeSentinel,
+} from './integrations';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
 import type { MemoryProvider } from './memory/provider';
@@ -66,6 +74,8 @@ export interface RunOptions {
   seed?: boolean;
   /** Endpoint HALT GRAPH — bila tidak diberikan, dibuat internal (tidak pernah halt). */
   control?: RunControl;
+  /** Sentinel Stripe bersama (idempoten lintas webhook & run). */
+  sentinel?: StripeSentinel;
   /** Simpan checkpoint tiap langkah agar run bisa di-resume. */
   checkpointer?: BaseCheckpointSaver;
   /** Thread id LangGraph (default: id baru). Sama = state tersimpan yang sama. */
@@ -104,6 +114,12 @@ export async function runAutonomous(
     emit: events,
     budget,
     control,
+    github: createGitHub(config),
+    deploy: createDeploy(config),
+    healthProbe: createHealthProbe(config),
+    social: createSocial(config),
+    email: createEmail(config),
+    sentinel: options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
   };
 
   const runId = options.runId ?? `run_${Date.now().toString(36)}`;
