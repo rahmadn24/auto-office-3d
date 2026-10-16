@@ -1,15 +1,18 @@
 'use client';
 
-import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import type { ReactNode } from 'react';
 
-import { CAMERA_PRESET, CANVAS_THEME, ORBIT_LIMITS } from '@/lib/zones';
+import { CAMERA_PRESET, CANVAS_THEME } from '@/lib/zones';
 
 import { Floor } from './Floor';
 import { NeuralBus } from './NeuralBus';
 import { ZoneFurniture } from './Furniture';
 import { ZoneMatrix } from './ZoneMatrix';
+import { Agents } from './agents/Agents';
+import { CameraRig } from './CameraRig';
+import { Confetti } from './Confetti';
+import { DemoDirector } from './DemoDirector';
 
 /**
  * Viewport 3D isometrik — PRD §4.1 & §4.3:
@@ -22,11 +25,6 @@ export default function OfficeScene(): ReactNode {
     overview.position[0],
     overview.position[1],
     overview.position[2],
-  ];
-  const target: [number, number, number] = [
-    overview.target[0],
-    overview.target[1],
-    overview.target[2],
   ];
 
   return (
@@ -63,16 +61,11 @@ export default function OfficeScene(): ReactNode {
       <ZoneMatrix />
       <ZoneFurniture />
       <NeuralBus />
+      <Agents />
+      <Confetti />
+      <DemoDirector />
 
-      <OrbitControls
-        enableDamping
-        dampingFactor={0.08}
-        target={target}
-        minPolarAngle={ORBIT_LIMITS.minPolarAngle}
-        maxPolarAngle={ORBIT_LIMITS.maxPolarAngle}
-        minDistance={ORBIT_LIMITS.minDistance}
-        maxDistance={ORBIT_LIMITS.maxDistance}
-      />
+      <CameraRig />
     </Canvas>
   );
 }
