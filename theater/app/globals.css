@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  height: 100%;
+  background: theme('colors.surface');
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+}
