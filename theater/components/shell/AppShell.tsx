@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { ConnectionBadge } from '@/components/overlays/AgentStream';
 import { FounderCommandBar } from '@/components/shell/FounderCommandBar';
@@ -90,6 +90,30 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname();
   const active = tabKeyFor(pathname);
 
+  // Overlay fixed (PerfOverlay, tombol Celebrate) menempel di dasar viewport;
+  // ukur tinggi bar+footer → CSS var --shell-bottom-space agar overlay duduk
+  // DI ATAS area command bar (tidak ketumpuk). Diukur ulang via ResizeObserver
+  // (strip error bar menambah tinggi; breakpoint mobile menambah clearance dock).
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    const measure = (): void => {
+      const bar = bottomRef.current?.offsetHeight ?? 0;
+      const footer = footerRef.current?.offsetHeight ?? 0;
+      document.documentElement.style.setProperty('--shell-bottom-space', `${bar + footer}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (bottomRef.current) ro.observe(bottomRef.current);
+    if (footerRef.current) ro.observe(footerRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-canvas-base">
       {/* ── Header (identik antar tab) ── */}
@@ -130,10 +154,15 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
       <main className="relative min-h-0 flex-1">{children}</main>
 
       {/* ── Founder Command — PRD §3.1 (satu-satunya input manusia, semua tab) ── */}
-      <FounderCommandBar />
+      <div ref={bottomRef} className="shrink-0">
+        <FounderCommandBar />
+      </div>
 
       {/* ── Footer (identik antar tab) ── */}
-      <footer className="flex shrink-0 items-center justify-between border-t border-white/8 bg-surface-container-low/60 px-4 py-1 font-mono text-label-xs uppercase tracking-widest text-tertiary backdrop-blur-sm">
+      <footer
+        ref={footerRef}
+        className="flex shrink-0 items-center justify-between border-t border-white/8 bg-surface-container-low/60 px-4 py-1 font-mono text-label-xs uppercase tracking-widest text-tertiary backdrop-blur-sm"
+      >
         <span>Founder Prompt ⇄ Brain · Autonomous Loop</span>
         <span className="hidden sm:inline">Milestone #1–#5</span>
       </footer>
