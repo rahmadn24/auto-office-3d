@@ -21,6 +21,14 @@ Ide Founder → BRIEFING (diskusi multi-turn sama PM) → GO
 
 Semua driver **env-gated** — tanpa API key apa pun, sistem tetap jalan penuh memakai driver `stub` / `memory` / `local` (offline, deterministik). Begitu kredensial diisi di `brain/.env`, driver otomatis berganti ke yang produksi (`anthropic`, `pinecone`, `vercel`, `e2b`, dsb).
 
+## Kenapa ini keren
+
+- **🤖 Tim AI yang beneran kerja** — bukan satu chatbot: ada PM yang menyusun PRD, Dev yang menulis kode, QA yang menjalankan test deterministik, DevOps yang push ke GitHub & deploy, Marketer yang bikin kampanye, sampai CS yang menutup penjualan. Semuanya otonom setelah Founder menekan GO.
+- **🏢 Kantornya nyata (versi 3D)** — seluruh kantor isometrik low-poly tampil live di browser: agen berjalan antar zona, mengetik di meja, speech bubble menampilkan log aksi, dan seluruh kantor ikut konfeti saat penjualan pertama masuk.
+- **⏸️ Bisa dijeda & dilanjutkan** — run yang sedang berjalan bisa di-halt kapan saja, lalu di-resume dari state tersimpannya (checkpointer LangGraph) tanpa mengulang dari nol.
+- **🧩 Jalan tanpa API key** — semua komponen punya driver offline/stub yang deterministik; sistem bisa dicoba penuh di laptop tanpa biaya, lalu "menyala" ke mode produksi cukup dengan mengisi `.env`.
+- **🔒 Anggaran token terjaga** — guard 250 ribu token per run dengan hard-kill, plus circuit breaker 5 siklus pada loop Dev↔QA agar iterasi nggak membakar token tanpa batas.
+
 ## Struktur repository
 
 Satu repo, dua app terpisah per folder (komputasi AI tidak bercampur dengan rendering 60 FPS):
@@ -57,8 +65,6 @@ auto-office-3d/
 │   └── tests/              # Test kontrak zona & kamera
 ```
 
-Kontrak TypeScript antara Brain dan Theater **diduplikasi terkontrol** (mis. `zones.ts`) — tanpa import silang, agar kedua app tetap bisa dirilis independen.
-
 ## Menjalankan
 
 ```bash
@@ -80,31 +86,6 @@ npm run build           # next build (produksi)
 ```
 
 Cara paling cepat mencoba: jalankan Brain (`npm run dev`), jalankan Theater (`npm run dev`), lalu ketik satu ide di **Founder Command Bar** (footer) — tekan Enter, dan lihat tim agen 3D mulai bekerja.
-
-### Loop Controls (HALT / RESUME)
-
-Run bisa dihentikan manual kapan saja lalu dilanjutkan dari state tersimpan (checkpointer LangGraph):
-
-```bash
-curl -X POST http://localhost:4800/control/halt    # {} = semua run, {"runId":"..."} = satu run
-curl -X POST http://localhost:4800/control/resume
-```
-
-Lewat Socket.io: event `control:halt` / `control:resume` dengan payload `{ runId?: string }`.
-
-## Roadmap
-
-| Fase | Status | Isi |
-|---|---|---|
-| 1–6 | ✅ Selesai | Brain daemon, viewport 3D, sinkronisasi socket, integrasi GitHub/Vercel/Stripe, polish E2E, Founder Command Bar |
-| 7 | 📋 | Durability (`DATA_DIR`, LanceDB, checkpoint resume) + evaluasi & benchmark model LLM |
-| 8 | 📋 | Briefing Room — chat multi-turn sama PM sebelum run otonom |
-| 9 | 📋 | Payment abstraction — Midtrans/Xendit + Stripe (driver pattern) |
-| 10 | 📋 | Demo Harness — deploy produk generate ke Docker (preset stack, subdomain) |
-| 11 | 📋 | CS Agent — omnichannel (widget/WA/email), leads follow-up, quote → payment link → kontrak |
-| 12 | 📋 | Soak test → Go-Live VPS (Docker Compose 24/7) |
-
-Detail per fase (deliverable & acceptance criteria) ada di [papan Trello](https://trello.com/b/RbCtUakd).
 
 ## Dokumen & referensi
 
