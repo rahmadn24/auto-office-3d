@@ -52,7 +52,7 @@ flowchart TB
     end
 
     subgraph brain["🧠 THE BRAIN — LangGraph.js · Socket.io · Zod"]
-        graph["Orkestrator 5 divisi<br/>PM → Dev ↔ QA → DevOps → Marketing → CS"]
+        orch["Orkestrator 5 divisi<br/>PM → Dev ↔ QA → DevOps → Marketing → CS"]
         mem["Vector memory per divisi"]
         sbx["Sandbox eksekusi kode"]
         drivers["Driver env-gated<br/>LLM · deploy · payment"]
@@ -62,9 +62,9 @@ flowchart TB
 
     founder --> theater
     theater <-->|"event real-time"| brain
-    graph --> mem
-    graph --> sbx
-    graph --> drivers
+    orch --> mem
+    orch --> sbx
+    orch --> drivers
     drivers --> cloud
 ```
 
