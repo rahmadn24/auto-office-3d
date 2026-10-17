@@ -29,9 +29,48 @@ Semua driver **env-gated** — tanpa API key apa pun, sistem tetap jalan penuh m
 - **🧩 Jalan tanpa API key** — semua komponen punya driver offline/stub yang deterministik; sistem bisa dicoba penuh di laptop tanpa biaya, lalu "menyala" ke mode produksi cukup dengan mengisi `.env`.
 - **🔒 Anggaran token terjaga** — guard 250 ribu token per run dengan hard-kill, plus circuit breaker 5 siklus pada loop Dev↔QA agar iterasi nggak membakar token tanpa batas.
 
-## Struktur repository
+## Tech Stack
 
-Satu repo, dua app terpisah per folder (komputasi AI tidak bercampur dengan rendering 60 FPS):
+| Layer | Teknologi |
+|---|---|
+| **Brain (backend)** | Node.js + TypeScript strict · [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) (state machine orkestrasi) · Socket.io · Zod |
+| **Theater (frontend)** | Next.js App Router · React Three Fiber + drei (Three.js) · Zustand · Tailwind CSS |
+| **AI & Memori** | Driver pattern LLM (Anthropic-compatible API / gateway lokal 9router) · Vector memory per divisi · OpenAI embeddings + fallback deterministik |
+| **Sandbox & Quality** | Isolasi eksekusi kode (E2B / local exec) · Vitest + coverage ≥ 90% · ESLint + Prettier · `tsc --noEmit` strict |
+| **Integrasi Cloud** | GitHub API · Vercel · Stripe · X/Twitter · (Midtrans/Xendit menyusul) |
+
+Semua integrasi bersifat **driver pattern + env-gated**: mode stub/offline untuk pengembangan tanpa biaya, begitu kredensial diisi tinggal berganti driver tanpa menyentuh kode bisnis.
+
+## Arsitektur
+
+```mermaid
+flowchart TB
+    founder["🧑‍💻 Founder — ide & briefing"]
+
+    subgraph theater["🎭 THE THEATER — Next.js · React Three Fiber"]
+        hud["Kantor 3D isometrik + HUD<br/>Command Bar · Pipeline · Artifacts"]
+    end
+
+    subgraph brain["🧠 THE BRAIN — LangGraph.js · Socket.io · Zod"]
+        graph["Orkestrator 5 divisi<br/>PM → Dev ↔ QA → DevOps → Marketing → CS"]
+        mem["Vector memory per divisi"]
+        sbx["Sandbox eksekusi kode"]
+        drivers["Driver env-gated<br/>LLM · deploy · payment"]
+    end
+
+    cloud["☁️ GitHub · Vercel · Stripe · X · LLM providers"]
+
+    founder --> theater
+    theater <-->|"event real-time"| brain
+    graph --> mem
+    graph --> sbx
+    graph --> drivers
+    drivers --> cloud
+```
+
+Dua app terpisah per folder — komputasi AI (Brain) tidak bercampur dengan rendering 60 FPS (Theater) — berkomunikasi semata-mata lewat event Socket.io, sehingga masing-masing bisa dirilis dan diskalakan independen.
+
+## Struktur repository
 
 ```
 auto-office-3d/
