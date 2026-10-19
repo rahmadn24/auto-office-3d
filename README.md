@@ -131,4 +131,7 @@ Cara paling cepat mencoba: jalankan Brain (`npm run dev`), jalankan Theater (`np
 - **Single Source of Truth (PRD):** [`brief/master_prd_architecture_brief_autooffice3d.md`](brief/master_prd_architecture_brief_autooffice3d.md)
 - **Design system:** [`brief/autonomous_command_hud/DESIGN.md`](brief/autonomous_command_hud/DESIGN.md)
 - **Referensi visual:** `brief/<view>/code.html` + `screen.png` (6 view)
+- **ADR (keputusan teknis):** [`docs/ADR/`](docs/ADR)
+- **Bench LLM terakhir:** [`bench/latest.md`](bench/latest.md)
+- **Panduan agen:** [`AGENTS.md`](AGENTS.md)
 - **Task board:** https://trello.com/b/RbCtUakd

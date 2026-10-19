@@ -6,6 +6,7 @@ import {
   parseAgentStatus,
   parseArtifacts,
   parseBrief,
+  parseBudgetUpdate,
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
@@ -162,8 +163,20 @@ export function connectBrain(): Socket {
   }, 5000);
 
   socket.on('system:hello', (hello: unknown) => {
-    const v = (hello as { version?: unknown } | null)?.version;
-    if (typeof v === 'string') useBrain.getState().setBrainVersion(v);
+    const h = hello as {
+      version?: unknown;
+      budget?: unknown;
+    } | null;
+    if (typeof h?.version === 'string') useBrain.getState().setBrainVersion(h.version);
+    // Fase 13 — status budget harian lintas-run saat (re)connect.
+    const budget = h?.budget ? parseBudgetUpdate(h.budget) : null;
+    if (budget?.ok) useBrain.getState().setBudget(budget.payload);
+  });
+
+  // Fase 13 — budget berubah setelah run selesai / run ditolak.
+  socket.on('budget:update', (raw: unknown) => {
+    const parsed = parseBudgetUpdate(raw);
+    if (parsed.ok) useBrain.getState().setBudget(parsed.payload);
   });
 
   socket.on('state:snapshot', (snapshot: unknown) => {
@@ -628,10 +641,6 @@ export function runCsSweep(
       resolve({ ok: true, summary });
     });
   });
-}
-
-export function getBrainSocket(): Socket | null {
-  return socket;
 }
 
 export function disconnectBrain(): void {

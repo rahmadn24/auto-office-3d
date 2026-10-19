@@ -5,6 +5,7 @@ import {
   parseAgentStatus,
   parseArtifacts,
   parseBrief,
+  parseBudgetUpdate,
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
@@ -466,5 +467,45 @@ describe('kontrak lead:update & payment:link_created (Fase 11 — paritas theate
     bus.lead(validLeadUpdate);
     expect(seen).toEqual(['lead_run_x_1']);
     expect(bus.leadUpdates).toHaveLength(1);
+  });
+});
+
+describe('kontrak budget:update (Fase 13 — paritas theater)', () => {
+  const validBudget = {
+    limit: 2_000_000,
+    used: 125_000,
+    remaining: 1_875_000,
+    exhausted: false,
+    enabled: true,
+    resetsAt: '2026-01-02T00:00:00.000Z',
+    timestamp: '2026-01-01T12:00:00.000Z',
+  };
+
+  it('payload valid diterima; angka negatif & timestamp kosong ditolak', () => {
+    expect(parseBudgetUpdate(validBudget).ok).toBe(true);
+    expect(parseBudgetUpdate({ ...validBudget, used: -1 }).ok).toBe(false);
+    expect(parseBudgetUpdate({ ...validBudget, timestamp: '' }).ok).toBe(false);
+  });
+
+  it('artifacts dengan costUsd (Fase 13) tetap valid; tanpa costUsd juga valid', () => {
+    const artifacts = {
+      runId: 'run_x',
+      projectName: 'Invoice Generator',
+      prd: '# PRD',
+      files: [],
+      qaSummary: 'ok',
+      qaPassed: true,
+      cycles: 1,
+      maxCycles: 5,
+      tokensUsed: 1200,
+      costUsd: 0.0123,
+      liveUrl: 'demo.local',
+      repoUrl: 'github.com/x/y',
+      durationMs: 1000,
+      timestamp: '2026-01-01T12:00:00.000Z',
+    };
+    expect(parseArtifacts(artifacts).ok).toBe(true);
+    const { costUsd: _drop, ...legacy } = artifacts;
+    expect(parseArtifacts(legacy).ok).toBe(true);
   });
 });

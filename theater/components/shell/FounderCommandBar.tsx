@@ -29,6 +29,7 @@ export function FounderCommandBar(): ReactNode {
   const [lastError, setLastError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
 
   const connected = connection === 'connected';
   const last = directives[0];
@@ -43,6 +44,22 @@ export function FounderCommandBar(): ReactNode {
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [showHistory]);
+
+  // Aksesibilitas popover: Escape menutup & fokus balik ke tombol pemicu;
+  // saat terbuka, fokus pindah ke item riwayat pertama (navigasi keyboard).
+  useEffect(() => {
+    if (!showHistory) return undefined;
+    const first = historyRef.current?.querySelector<HTMLButtonElement>('li button');
+    first?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setShowHistory(false);
+        historyButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [showHistory]);
 
   async function submit(e: FormEvent): Promise<void> {
@@ -94,10 +111,14 @@ export function FounderCommandBar(): ReactNode {
         {/* Riwayat prompt sebelumnya */}
         <div ref={historyRef} className="relative shrink-0">
           <button
+            ref={historyButtonRef}
             type="button"
             onClick={() => setShowHistory((v) => !v)}
             disabled={directives.length === 0}
             aria-label="Riwayat directive"
+            aria-haspopup="true"
+            aria-expanded={showHistory}
+            aria-controls="directive-history"
             title="Riwayat directive"
             className="rounded border border-grid-major/60 px-2 py-1 font-mono text-mono-label uppercase tracking-wide text-tertiary transition-colors hover:text-secondary disabled:opacity-40"
           >
@@ -105,6 +126,9 @@ export function FounderCommandBar(): ReactNode {
           </button>
           {showHistory && directives.length > 0 ? (
             <div
+              id="directive-history"
+              role="region"
+              aria-label="Riwayat directive"
               className={`absolute bottom-full right-0 mb-2 max-h-64 w-80 overflow-y-auto rounded-xl p-2 ${GLASS}`}
             >
               <div className="px-1 pb-1.5 font-mono text-mono-label uppercase tracking-wide text-tertiary">

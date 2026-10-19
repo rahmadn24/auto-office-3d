@@ -22,6 +22,10 @@ Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.t
 `brain/src/server/socket.ts` (bootstrap + io handlers, termasuk `run:replay`) ·
 `brain/src/payments/` (Payment Sentinel multi-provider: provider.ts + driver
 stripe/midtrans/stub/xendit + factory `createPayment`) ·
+`brain/src/llm/` (driver LLM: provider.ts + anthropic/openai/openai-compat
+`openai.ts` chat completions + stub + `pricing.ts` tabel harga utk estimasi
+biaya) · `brain/src/telemetry/dailyBudget.ts` (budget token harian lintas-run
+Fase 13) ·
 `brain/src/cs/` (CS Agent Fase 11: `service.ts` omnichannel + closing, `leads.ts`
 store durable `leads`/`cs_messages`, `channels.ts` adapter widget/WA/email,
 `contract.ts` PDF tanpa dependency, `widget.ts` aset widget) ·
@@ -36,6 +40,10 @@ omnichannel lead + quote/kontrak + sweep follow-up) ·
 `theater/components/pipeline/RunReplayPanel.tsx` + `theater/store/replayStore.ts`
 (playback event replay) · `theater/app/layout.tsx` (BrainBridge socket sekali
 untuk semua tab) · `theater/store/brainStore.ts` (state dari event) ·
+`theater/lib/motion.ts` + `theater/lib/a11y.ts` (Fase 13: prefers-reduced-motion
+& navigasi keyboard) · `theater/components/overlays/CameraPresets.tsx` (5 preset
+kamera terjangkau dari UI) · `docs/ADR/` (keputusan teknis) + `bench/latest.md`
+(hasil bench LLM) ·
 `brain/src/version.ts` (BRAIN_VERSION — sumber tunggal, theater membacanya dari
 handshake `system:hello`) · `brain/src/logger.ts` (pino terstruktur, level
 `LOG_LEVEL`) · `brain/src/integrations/notify.ts` (Telegram/Discord, stub default) ·
@@ -136,6 +144,25 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
 - Backup Fase 12: `scripts/backup.mjs` memverifikasi checksum saat restore; jangan
   pernah restore ke DATA_DIR yang sedang ditulis daemon (stop brain dulu). Cron VPS
   memakai `docker compose exec -T brain node scripts/backup.mjs --keep 14`.
+- Budget harian Fase 13: `tokensUsedSince` menghitung `updated_at` run (≈ waktu
+  `finishRun`); run yang di-resume dihitung ulang hari itu dengan total finalnya —
+  jangan "memperbaiki" dengan menambah token inkremental. Guard ada di dua tempat:
+  `runAutonomous` (library) dan handler `founder:directive` (ack `ok:false`
+  sebelum `ack:true`).
+- Body webhook Fase 13: `readBody` melewati limit → `req.resume()` (bukan
+  `req.destroy()`) supaya respons 413 masih terkirim; jangan balikin unbounded.
+- CORS Fase 13: allowlist `CORS_ORIGINS` berlaku di HTTP (preflight `OPTIONS`
+  dijawab 204) **dan** socket.io; default `*` hanya aman untuk lokal. `WEBHOOK_MAX_BODY_BYTES`
+  default 256 KiB.
+- OpenAI-compat Fase 13: `OPENAI_COMPAT_API_KEY` sengaja terpisah dari
+  `OPENAI_API_KEY` (embeddings) — jangan disatukan. `LLM_DRIVER=auto` memilih
+  anthropic dulu, baru openai-compat, fallback stub.
+- Reduced motion Fase 13: komponen yang beranimasi wajib baca `useReducedMotion()`
+  (`theater/lib/motion.ts`) — konfeti di-skip, CameraRig snap. Jangan tambah
+  animasi baru tanpa hook itu.
+- Audit deps: residual `npm audit` theater/brain hanya hilang dengan major
+  (Next 16 + React 19 + R3F 9 + Tailwind 4; lancedb downgrade) — **jangan
+  `npm audit fix --force`** tanpa fase migrasi sendiri; lihat komentar kartu 13.6.
 
 ## Alur kerja yang diharapkan
 

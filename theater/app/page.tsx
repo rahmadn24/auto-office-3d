@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 
 import { DivisionSidebar } from '../components/overlays/DivisionSidebar';
 import { AgentStream } from '../components/overlays/AgentStream';
+import { CameraPresets } from '../components/overlays/CameraPresets';
 import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
 import { PerfOverlay } from '../components/overlays/PerfOverlay';
 import { AppShell } from '../components/shell/AppShell';
@@ -32,6 +33,8 @@ export default function HomePage(): ReactNode {
       <OfficeScene />
       <CelebrationOverlay />
       <PerfOverlay />
+      {/* Pemilih 5 preset kamera cinematic (PRD §4.3) — meeting/devOps terjangkau. */}
+      <CameraPresets />
       {/* Layout DESIGN.md: sidebar divisi kiri (280px desktop / rail tablet). */}
       <DivisionSidebar />
       {/* Right-rail: Agent Stream feed mentah (PRD §5.1). */}

@@ -4,32 +4,26 @@ import { Html } from '@react-three/drei';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { zoneActivitySuffix, useBrain } from '@/store/brainStore';
-import { ZONES, type Zone, type ZoneKey } from '@/lib/zones';
+import { ZONES, type Zone } from '@/lib/zones';
 
-/** Ticker lambat (2s) agar status basi bisa expired dari label zona. */
-function useStaleTick(active: boolean): number {
-  const [tick, setTick] = useState(0);
+/**
+ * Ticker lambat (2s) agar status basi bisa expired dari label zona.
+ * Satu interval untuk seluruh matriks (dipanggil di `ZoneMatrix`), bukan
+ * satu interval per platform zona — hemat timer (kartu bersih-bersih 13.4).
+ */
+function useStaleTick(active: boolean): void {
+  const [, setTick] = useState(0);
   useEffect(() => {
     if (!active) return;
     const id = setInterval(() => setTick((t) => t + 1), 2000);
     return () => clearInterval(id);
   }, [active]);
-  return tick;
-}
-
-/** Suffix aktivitas live zona ("ACTIVE DEBATE", "BUILDING", …) dari brain. */
-function useZoneActivity(zoneKey: ZoneKey): string | null {
-  const agents = useBrain((s) => s.agents);
-  const hasAny = Object.keys(agents).length > 0;
-  useStaleTick(hasAny);
-  return zoneActivitySuffix(zoneKey, agents, Date.now());
 }
 
 /** Platform satu zona: pad 0.4 tinggi + border glow aksen + label layar. */
-function ZonePlatform({ zone }: { zone: Zone }): ReactNode {
+function ZonePlatform({ zone, activity }: { zone: Zone; activity: string | null }): ReactNode {
   const [width, depth] = zone.size;
   const [x, y, z] = zone.position;
-  const activity = useZoneActivity(zone.key);
 
   return (
     <group position={[x, y, z]}>
@@ -83,10 +77,17 @@ function ZonePlatform({ zone }: { zone: Zone }): ReactNode {
 
 /** Enam zona PRD §4.1: 5 zona kantor + Central Neural Bus. */
 export function ZoneMatrix(): ReactNode {
+  const agents = useBrain((s) => s.agents);
+  // Satu ticker agregat untuk semua zona (teks aktivitas expired tiap 2s).
+  useStaleTick(Object.keys(agents).length > 0);
   return (
     <group>
       {ZONES.map((zone) => (
-        <ZonePlatform key={zone.id} zone={zone} />
+        <ZonePlatform
+          key={zone.id}
+          zone={zone}
+          activity={zoneActivitySuffix(zone.key, agents, Date.now())}
+        />
       ))}
     </group>
   );

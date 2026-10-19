@@ -248,6 +248,8 @@ export const ArtifactsSchema = z.object({
   cycles: z.number().nonnegative(),
   maxCycles: z.number().positive(),
   tokensUsed: z.number().nonnegative(),
+  /** Estimasi biaya run (USD) — Fase 13; opsional agar payload lama tetap valid. */
+  costUsd: z.number().nonnegative().optional(),
   liveUrl: z.string(),
   repoUrl: z.string(),
   durationMs: z.number().nonnegative(),
@@ -257,6 +259,25 @@ export type ArtifactsPayload = z.infer<typeof ArtifactsSchema>;
 
 export function parseArtifacts(raw: unknown): ContractParse<ArtifactsPayload> {
   const parsed = ArtifactsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+/* ───────── Fase 13 — budget token harian (`budget:update`) ───────── */
+
+export const BudgetUpdateSchema = z.object({
+  limit: z.number().nonnegative(),
+  used: z.number().nonnegative(),
+  remaining: z.number().nonnegative(),
+  exhausted: z.boolean(),
+  enabled: z.boolean(),
+  resetsAt: z.string().min(1),
+  timestamp: z.string().min(1),
+});
+export type BudgetUpdatePayload = z.infer<typeof BudgetUpdateSchema>;
+
+export function parseBudgetUpdate(raw: unknown): ContractParse<BudgetUpdatePayload> {
+  const parsed = BudgetUpdateSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
   return { ok: true, payload: parsed.data };
 }

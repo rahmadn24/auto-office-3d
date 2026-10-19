@@ -4,6 +4,7 @@ import type {
   AgentStatusPayload,
   AgentId,
   ArtifactsPayload,
+  BudgetUpdatePayload,
   DeployUpdatePayload,
   FirstSalePayload,
   MemoryRetrievalPayload,
@@ -165,12 +166,16 @@ interface BrainStore {
   control: { haltedAll: boolean; runIds: string[] } | null;
   /** Bundel hasil run terakhir (PRD + berkas + QA) untuk viewer Artifacts. */
   artifacts: ArtifactsPayload | null;
+  /** Budget token harian lintas-run (Fase 13) — dari system:hello & budget:update. */
+  budget: BudgetUpdatePayload | null;
   /** Riwayat Founder Prompt yang dikirim dari UI (terbaru di depan, maks 8). */
   directives: DirectiveRecord[];
 
   setConnection(status: ConnectionStatus): void;
   setPing(ms: number): void;
   setBrainVersion(v: string): void;
+  /** Perbarui status budget harian (Fase 13). */
+  setBudget(budget: BudgetUpdatePayload): void;
   /** Terapkan payload status: validasi, diff update agent, dorong feed. */
   applyStatus(payload: AgentStatusPayload): boolean;
   /** Terapkan milestone first sale — idempoten per paymentEventId. */
@@ -257,11 +262,13 @@ export const useBrain = create<BrainStore>((set, get) => ({
   memorySizes: {},
   control: null,
   artifacts: null,
+  budget: null,
   directives: [],
 
   setConnection: (connection) => set({ connection }),
   setPing: (pingMs) => set({ pingMs }),
   setBrainVersion: (brainVersion) => set({ brainVersion }),
+  setBudget: (budget) => set({ budget }),
 
   applyStatus: (payload) => {
     const s = get();

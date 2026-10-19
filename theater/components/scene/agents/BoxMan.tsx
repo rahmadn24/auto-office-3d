@@ -86,8 +86,8 @@ export function BoxMan({
 
   const sitBlend = useRef(1);
   const arrived = useRef(false);
-  const targetVec = useMemoVec();
-  const dirVec = useMemoVec();
+  const targetVec = useVector();
+  const dirVec = useVector();
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1);
@@ -304,11 +304,6 @@ export function BoxMan({
 
 function dampTo(current: number, target: number, lambda: number, dt: number): number {
   return MathUtils.damp(current, target, lambda, dt);
-}
-
-function useMemoVec(): Vector3 {
-  // dipanggil 2× per komponen — aman (tanpa conditional hook)
-  return useVector();
 }
 
 function useVector(): Vector3 {

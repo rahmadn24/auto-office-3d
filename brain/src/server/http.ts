@@ -8,6 +8,7 @@ import type { CsService } from '../cs/service';
 import { socketIoClientFile, WIDGET_JS, widgetDemoPage } from '../cs/widget';
 import { EventBus } from '../events';
 import { isDemoPayment, type PaymentProvider, type WebhookOutcome } from '../payments';
+import type { DailyBudgetStatus } from '../telemetry/dailyBudget';
 import { formatMoney, type Telemetry } from '../types';
 import { BRAIN_VERSION } from '../version';
 import { isAuthorizedHeader } from './auth';
@@ -45,6 +46,10 @@ export interface HttpHandlerOptions {
   health?: () => HealthInfo;
   /** Token auth aksi kontrol (Fase 12); kosong = terbuka (dev lokal). */
   authToken?: string;
+  /** Fase 13 — batas ukuran body HTTP (byte). Default 256 KiB. */
+  maxBodyBytes?: number;
+  /** Fase 13 — allowlist origin CORS (`['*']` = semua). */
+  corsOrigins?: string[];
 }
 
 /** Bagian `/health` yang dikumpulkan bootstrap (config + store) — Fase 12. */
@@ -55,14 +60,65 @@ export interface HealthInfo {
     latest: { runId: string; status: string; updatedAt: string } | null;
   };
   data?: { dir: string; bytes: number };
+  /** Budget token harian lintas-run — Fase 13. */
+  budget?: DailyBudgetStatus;
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+function readBody(req: IncomingMessage, limitBytes: number): Promise<string> {
+  return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk: Buffer) => (data += chunk.toString('utf8')));
-    req.on('end', () => resolve(data));
+    let bytes = 0;
+    let settled = false;
+    const fail = (status: number, message: string): void => {
+      if (settled) return;
+      settled = true;
+      reject(new HttpBodyError(status, message));
+    };
+    req.on('data', (chunk: Buffer) => {
+      if (settled) return;
+      bytes += chunk.length;
+      if (bytes > limitBytes) {
+        fail(413, `payload terlalu besar (limit ${limitBytes} byte)`);
+        // Buang sisa stream tanpa destroy — response 413 masih harus terkirim.
+        req.resume();
+        return;
+      }
+      data += chunk.toString('utf8');
+    });
+    req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(data);
+    });
+    req.on('error', (err) => fail(400, `gagal membaca body: ${err.message}`));
   });
+}
+
+/** Error body HTTP (413/400) — dibedakan agar handler bisa menjawab status tepat. */
+class HttpBodyError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'HttpBodyError';
+  }
+}
+
+/** Bungkus readBody: sukses → handler, gagal → JSON status (tanpa unhandled rejection). */
+function handleBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  limitBytes: number,
+  handler: (body: string) => void | Promise<void>,
+): void {
+  void readBody(req, limitBytes)
+    .then(handler)
+    .catch((err: unknown) => {
+      if (res.headersSent) return;
+      const status = err instanceof HttpBodyError ? err.status : 500;
+      json(res, status, { ok: false, error: err instanceof Error ? err.message : String(err) });
+    });
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -101,8 +157,25 @@ export function createHttpHandler(
   opts: HttpHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const { bus, control, payment, controlTelemetry, getIo, cs, widget, health, authToken } = opts;
+  const bodyLimit = opts.maxBodyBytes ?? 262_144;
+  const corsOrigins = opts.corsOrigins ?? ['*'];
   const webhookPath = `/webhook/${payment.id}`;
   const demo = isDemoPayment(payment) ? payment : null;
+
+  /** Header CORS bila origin diizinkan (Fase 13 — allowlist via CORS_ORIGINS). */
+  function applyCors(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin;
+    if (!origin) return;
+    const allowAll = corsOrigins.includes('*');
+    if (!allowAll && !corsOrigins.includes(origin)) return;
+    res.setHeader('access-control-allow-origin', allowAll ? '*' : origin);
+    res.setHeader('vary', 'Origin');
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    res.setHeader(
+      'access-control-allow-headers',
+      'authorization, content-type, x-cs-inbound-secret',
+    );
+  }
 
   function broadcastRevenue(runId: string): void {
     bus.revenue({ ...payment.metrics(), runId, timestamp: new Date().toISOString() });
@@ -127,6 +200,14 @@ export function createHttpHandler(
   }
 
   return (req, res) => {
+    applyCors(req, res);
+    // Preflight CORS (fase 13): jawab tanpa menyentuh handler lain.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (req.method === 'GET' && req.url === '/health') {
       const metrics = payment.metrics();
       const extra = health?.();
@@ -139,6 +220,7 @@ export function createHttpHandler(
         drivers: extra?.drivers ?? {},
         runs: extra?.runs ?? { total: 0, latest: null },
         data: extra?.data ?? null,
+        budget: extra?.budget ?? null,
         control: control.snapshot(),
         payment: {
           provider: payment.id,
@@ -157,7 +239,7 @@ export function createHttpHandler(
         json(res, 401, { ok: false, error: 'unauthorized: token required' });
         return;
       }
-      void readBody(req).then((body) => {
+      handleBody(req, res, bodyLimit, (body) => {
         let runId: string | undefined;
         try {
           const parsed: unknown = body ? JSON.parse(body) : {};
@@ -187,7 +269,7 @@ export function createHttpHandler(
     }
 
     if (req.method === 'POST' && req.url === webhookPath) {
-      void readBody(req).then((body) => {
+      handleBody(req, res, bodyLimit, (body) => {
         let outcome: WebhookOutcome;
         try {
           outcome = payment.receiveWebhook({ rawBody: body, headers: req.headers }, 'webhook');
@@ -249,7 +331,7 @@ export function createHttpHandler(
         json(res, 503, { ok: false, error: 'cs agent tidak aktif' });
         return;
       }
-      void readBody(req).then(async (body) => {
+      handleBody(req, res, bodyLimit, async (body) => {
         let parsed: unknown;
         try {
           parsed = JSON.parse(body);
@@ -274,7 +356,7 @@ export function createHttpHandler(
         json(res, 503, { ok: false, error: 'cs agent tidak aktif' });
         return;
       }
-      void readBody(req).then(async (body) => {
+      handleBody(req, res, bodyLimit, async (body) => {
         const result = await cs.handleEmailInbound({
           rawBody: body,
           headers: req.headers,
@@ -382,7 +464,7 @@ memicu webhook internal dan memancarkan <code>milestone:first_sale</code> + <cod
 
       // Simulasi bayar → webhook internal driver stub (PRD §7 Fase 9).
       if (req.method === 'POST' && req.url === '/demo/pay') {
-        void readBody(req).then((body) => {
+        handleBody(req, res, bodyLimit, (body) => {
           const isJson = (req.headers['content-type'] ?? '').includes('application/json');
           let orderId = '';
           if (isJson) {
