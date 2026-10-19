@@ -10,6 +10,7 @@ import {
 /**
  * Driver produksi: Anthropic Messages API (Claude 3.5 Sonnet) — PRD §2.1.
  * Dipanggil via fetch tanpa SDK agar dependency brain tetap ringan.
+ * `baseUrl` dapat diarahkan ke gateway kompatibel-Anthropic (mis. 9router lokal).
  */
 export class AnthropicLLM implements LLMProvider {
   readonly driver = 'anthropic';
@@ -17,8 +18,12 @@ export class AnthropicLLM implements LLMProvider {
   constructor(
     private readonly apiKey: string,
     readonly model: string = 'claude-3-5-sonnet-latest',
-    private readonly url = 'https://api.anthropic.com/v1/messages',
+    private readonly baseUrl: string = 'https://api.anthropic.com/v1',
   ) {}
+
+  get endpoint(): string {
+    return `${this.baseUrl.replace(/\/+$/, '')}/messages`;
+  }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
     const system = request.task === 'prd' ? prdSystemPrompt() : codeSystemPrompt();
@@ -31,7 +36,7 @@ export class AnthropicLLM implements LLMProvider {
       `\nFounder directive:\n${request.prompt}`,
     ].join('\n');
 
-    const res = await fetch(this.url, {
+    const res = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

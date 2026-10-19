@@ -2,6 +2,7 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { MemorySaver } from '@langchain/langgraph';
 
 import { createControl, GraphHaltedError, type RunControl } from './control';
+import type { RunStatus, RunStore } from './durability/store';
 import { EventBus } from './events';
 import { buildOrchestrator, type Orchestrator } from './graph/build';
 import { initialState } from './graph/state';
@@ -117,6 +118,40 @@ export interface RunOptions {
   checkpointer?: BaseCheckpointSaver;
   /** Thread id LangGraph (default: id baru). Sama = state tersimpan yang sama. */
   runId?: string;
+  /** Run history + event log durable (PRD v3.0 §4.4). */
+  store?: RunStore;
+}
+
+/** Status durable dari stage akhir run (PRD v3.0 §4.4). */
+export function statusForStage(stage: RunState['stage']): RunStatus {
+  if (stage === 'failed') return 'failed';
+  if (stage === 'halted') return 'halted';
+  return 'completed';
+}
+
+/** Susun dependency graph — dipakai runAutonomous & resumeAutonomous. */
+function buildDeps(
+  config: Config,
+  events: EventBus,
+  budget: TokenBudget,
+  control: RunControl,
+  memory: MemoryProvider,
+  sentinel: StripeSentinel,
+): GraphDeps {
+  return {
+    llm: createLLM(config),
+    memory,
+    sandbox: createSandbox(config),
+    emit: events,
+    budget,
+    control,
+    github: createGitHub(config),
+    deploy: createDeploy(config),
+    healthProbe: createHealthProbe(config),
+    social: createSocial(config),
+    email: createEmail(config),
+    sentinel,
+  };
 }
 
 export interface RunResult {
@@ -146,22 +181,19 @@ export async function runAutonomous(
   // Bila memory dibagikan dari index (untuk snapshot), ia sudah di-seed di sana.
   if (!options.memory && options.seed !== false) await seedMemory(memory);
 
-  const deps: GraphDeps = {
-    llm: createLLM(config),
-    memory,
-    sandbox: createSandbox(config),
-    emit: events,
+  const deps = buildDeps(
+    config,
+    events,
     budget,
     control,
-    github: createGitHub(config),
-    deploy: createDeploy(config),
-    healthProbe: createHealthProbe(config),
-    social: createSocial(config),
-    email: createEmail(config),
-    sentinel: options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
-  };
+    memory,
+    options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
+  );
 
   const runId = options.runId ?? `run_${Date.now().toString(36)}`;
+  const projectName = guessProjectName(founderPrompt);
+  options.store?.startRun({ runId, directive: founderPrompt, projectName });
+
   // Checkpointer selalu aktif: HALT bisa terjadi kapan saja dan run wajib
   // bisa di-resume dari state tersimpan (PRD).
   const checkpointer = options.checkpointer ?? new MemorySaver();
@@ -171,7 +203,7 @@ export async function runAutonomous(
   const initial = initialState({
     runId,
     founderPrompt,
-    projectName: guessProjectName(founderPrompt),
+    projectName,
     maxIterations: config.maxIterations,
     model: deps.llm.model,
   });
@@ -180,13 +212,23 @@ export async function runAutonomous(
   try {
     state = (await app.invoke(initial, invokeConfig)) as RunState;
   } catch (err) {
-    if (!(err instanceof GraphHaltedError)) throw err;
+    if (!(err instanceof GraphHaltedError)) {
+      options.store?.finishRun(runId, { status: 'failed' });
+      throw err;
+    }
     // Halt oleh operator: checkpoint tersimpan, stage di-report sebagai 'halted'.
     const snapshot = await app.getState(invokeConfig);
     state = { ...(snapshot.values as RunState), stage: 'halted' };
   }
 
   emitArtifacts(events, state, founderPrompt, budget.total, Date.now() - runStartedAt);
+  options.store?.finishRun(runId, {
+    status: statusForStage(state.stage),
+    stage: state.stage,
+    tokensUsed: budget.total,
+    liveUrl: state.liveUrl,
+    repoUrl: state.repoUrl,
+  });
 
   return {
     state,
@@ -214,6 +256,76 @@ export async function resumeRun(
     recursionLimit: 64,
     configurable: { thread_id: runId },
   })) as RunState;
+}
+
+/**
+ * Resume run dari checkpoint **durable** setelah restart (PRD v3.0 §2.1 & #6).
+ * Berbeda dengan `resumeRun` (app yang sama di memori), fungsi ini membangun
+ * ulang seluruh dependency dari config + checkpointer SQLite di DATA_DIR.
+ */
+export async function resumeAutonomous(
+  runId: string,
+  options: RunOptions = {},
+): Promise<RunResult> {
+  const config = options.config ?? loadConfig();
+  const events = options.emit ?? new EventBus();
+  const budget = new TokenBudget(config.tokenBudget);
+  const control = options.control ?? createControl();
+  const memory = options.memory ?? createMemory(config);
+  const runStartedAt = Date.now();
+
+  const deps = buildDeps(
+    config,
+    events,
+    budget,
+    control,
+    memory,
+    options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
+  );
+  const checkpointer = options.checkpointer ?? new MemorySaver();
+  const app = buildOrchestrator(deps, { checkpointer });
+  const invokeConfig = { recursionLimit: 64, configurable: { thread_id: runId } };
+
+  const snapshot = await app.getState(invokeConfig);
+  const values = (snapshot?.values ?? {}) as Partial<RunState>;
+  if (!values.runId) throw new Error(`No checkpoint found for run ${runId}`);
+
+  options.store?.startRun({
+    runId,
+    directive: values.founderPrompt ?? '',
+    projectName: values.projectName ?? '',
+  });
+
+  let state: RunState;
+  try {
+    state = (await app.invoke(null, invokeConfig)) as RunState;
+  } catch (err) {
+    if (!(err instanceof GraphHaltedError)) {
+      options.store?.finishRun(runId, { status: 'failed' });
+      throw err;
+    }
+    const halted = await app.getState(invokeConfig);
+    state = { ...(halted.values as RunState), stage: 'halted' };
+  }
+
+  emitArtifacts(events, state, state.founderPrompt, budget.total, Date.now() - runStartedAt);
+  options.store?.finishRun(runId, {
+    status: statusForStage(state.stage),
+    stage: state.stage,
+    tokensUsed: budget.total,
+    liveUrl: state.liveUrl,
+    repoUrl: state.repoUrl,
+  });
+
+  return {
+    state,
+    events,
+    tokensUsed: budget.total,
+    tokenBreakdown: budget.byDivision(),
+    runId,
+    control,
+    app,
+  };
 }
 
 /** Nama proyek untuk PRD & URL deploy, diturunkan dari prompt Founder. */

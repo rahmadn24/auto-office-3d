@@ -49,17 +49,19 @@ export class HashEmbedder implements Embedder {
   }
 }
 
-/** Production: POST https://api.openai.com/v1/embeddings */
+/** Production: POST {baseUrl}/embeddings (default OpenAI; bisa diarahkan ke gateway lokal). */
 export class OpenAIEmbedder implements Embedder {
   readonly driver = 'openai';
 
   constructor(
     private readonly apiKey: string,
     readonly model: string = 'text-embedding-3-small',
+    private readonly baseUrl: string = 'https://api.openai.com/v1',
   ) {}
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const url = `${this.baseUrl.replace(/\/+$/, '')}/embeddings`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -79,6 +81,12 @@ export class OpenAIEmbedder implements Embedder {
   }
 }
 
-export function createEmbedder(opts: { openaiApiKey?: string; model: string }): Embedder {
-  return opts.openaiApiKey ? new OpenAIEmbedder(opts.openaiApiKey, opts.model) : new HashEmbedder();
+export function createEmbedder(opts: {
+  openaiApiKey?: string;
+  baseUrl?: string;
+  model: string;
+}): Embedder {
+  return opts.openaiApiKey
+    ? new OpenAIEmbedder(opts.openaiApiKey, opts.model, opts.baseUrl)
+    : new HashEmbedder();
 }
