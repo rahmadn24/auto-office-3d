@@ -45,6 +45,6 @@
     "vitest": "^5.0.5"
   },
   "allowScripts": {
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver": true
   }
 }

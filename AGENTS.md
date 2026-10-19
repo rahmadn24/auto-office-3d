@@ -52,7 +52,7 @@ Per paket sama saja: `npm --prefix brain run verify`, dst.
 ## Trello (tracking fase)
 
 Board `6ad1d2b83957007054c4f4c6`. List Done: `6ad1d304c1183a26bcbad9c6`; list Fase 8:
-`6ad3b850a3b3d4e0bf00cfd1` (list fase lain menyusul di board). Alur tiap fase:
+`6ad3b850a3b3d4e0bf00cfd1`; list per fase 9–13 mengikuti pola yang sama. Alur tiap fase:
 kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → merge `--no-ff` → push.
 
 ## Testing
