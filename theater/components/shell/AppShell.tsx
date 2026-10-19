@@ -13,7 +13,6 @@ import { useBrain } from '@/store/brainStore';
 /** Id tab = route (deep-linkable, PRD AC: URL route per tab). */
 const TABS = [
   { href: '/', label: 'Office Theater', sub: '3D Live', key: 'office' },
-  { href: '/briefing', label: 'Briefing Room', sub: '& Chat PM', key: 'briefing' },
   { href: '/inbox', label: 'CS Inbox', sub: '& Closing', key: 'inbox' },
   { href: '/pipeline', label: 'Agent Pipeline', sub: '& State', key: 'pipeline' },
   { href: '/artifacts', label: 'Artifacts', sub: '& PRD', key: 'artifacts' },
@@ -23,7 +22,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 function tabKeyFor(path: string): TabKey {
-  if (path.startsWith('/briefing')) return 'briefing';
+  // `/briefing` (route lama) kini redirect ke office — chat PM jadi dock floating.
   if (path.startsWith('/inbox')) return 'inbox';
   if (path.startsWith('/pipeline')) return 'pipeline';
   if (path.startsWith('/artifacts')) return 'artifacts';

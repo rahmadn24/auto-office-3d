@@ -33,14 +33,18 @@ const STATUS_COLOR: Record<string, string> = {
   celebrating: '#4edea3',
 };
 
-export function DivisionSidebar(): ReactNode {
+export function DivisionSidebar({ anchored = true }: { anchored?: boolean }): ReactNode {
   const agents = useBrain((s) => s.agents);
+  // `anchored=false` → dipakai di kolom kiri bersama floating chat PM
+  // (page.tsx): sidebar mengalir normal, chat mengambil sisa tinggi di bawahnya.
+  const asidePos = anchored ? 'absolute left-8 top-8 z-20' : '';
+  const railPos = anchored ? 'absolute left-6 top-8 z-20' : '';
 
   return (
     <>
       {/* Desktop ≥1280px — panel 280px, margin 2rem (DESIGN.md). */}
       <aside
-        className={`absolute left-8 top-8 z-20 hidden w-[280px] flex-col overflow-hidden rounded-xl xl:flex ${GLASS}`}
+        className={`${asidePos} hidden h-full min-h-0 w-[280px] flex-col overflow-hidden rounded-xl xl:flex ${GLASS}`}
       >
         <header className="flex shrink-0 items-center justify-between border-b border-white/8 px-3 py-2">
           <h2 className="font-mono text-mono-label uppercase tracking-wide text-[#94a3b8]">
@@ -48,7 +52,7 @@ export function DivisionSidebar(): ReactNode {
           </h2>
           <span className="font-mono text-[9px] uppercase tracking-wide text-[#475569]">280px</span>
         </header>
-        <ul className="flex flex-col gap-1.5 p-3">
+        <ul className="flex min-h-0 flex-col gap-1.5 overflow-y-auto p-3">
           {DIVISIONS.map(({ id, label, role, color, icon }) => {
             const a = agents[id];
             const action = a?.currentAction ?? 'idle';
@@ -84,7 +88,7 @@ export function DivisionSidebar(): ReactNode {
       {/* Tablet 768–1279px — icon-only rail. */}
       <nav
         aria-label="Agent divisions"
-        className={`absolute left-6 top-8 z-20 hidden w-12 flex-col items-center gap-2 rounded-xl p-2 md:flex xl:hidden ${GLASS}`}
+        className={`${railPos} hidden w-12 flex-col items-center gap-2 rounded-xl p-2 md:flex xl:hidden ${GLASS}`}
       >
         {DIVISIONS.map(({ id, label, color, icon }) => {
           const action = agents[id]?.currentAction ?? 'idle';

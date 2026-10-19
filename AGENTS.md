@@ -34,7 +34,8 @@ store durable `leads`/`cs_messages`, `channels.ts` adapter widget/WA/email,
 `brain/src/integrations/dockerdeploy.ts` (DEPLOY_DRIVER=docker: build → run
 `demo-net` → health probe → READY) · `brain/src/briefing.ts` (Briefing Room:
 founder:chat/pm:reply, compile brief) ·
-`theater/components/briefing/BriefingRoom.tsx` (tab Briefing Room) ·
+`theater/components/briefing/PmChatDock.tsx` (floating chat PM di Office
+Theater — dock kiri-bawah, collapse jadi pill/FAB; composer + GO) ·
 `theater/components/cs/CsInbox.tsx` + `theater/store/csStore.ts` (tab `/inbox`:
 omnichannel lead + quote/kontrak + sweep follow-up) ·
 `theater/components/pipeline/RunReplayPanel.tsx` + `theater/store/replayStore.ts`
