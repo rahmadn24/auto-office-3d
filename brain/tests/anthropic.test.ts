@@ -62,18 +62,18 @@ describe('AnthropicLLM — driver produksi (fetch dimock)', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('http://localhost:20128/v1/messages');
   });
 
-  it('HTTP error → melempar pesan berisi status', async () => {
+  it('HTTP error non-retryable (400) → langsung melempar pesan berisi status', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
-        async (_url: string, _init?: RequestInit) => new Response('rate limited', { status: 429 }),
+        async (_url: string, _init?: RequestInit) => new Response('bad request', { status: 400 }),
       ),
     );
 
     const llm = new AnthropicLLM('sk', 'm');
     await expect(
       llm.complete({ task: 'code', prompt: 'x', context: { projectName: 'p' } }),
-    ).rejects.toThrow(/429/);
+    ).rejects.toThrow(/400/);
   });
 
   it('respons tanpa usage → estimasi token tetap > 0 (guardrail budget)', async () => {
@@ -93,5 +93,52 @@ describe('AnthropicLLM — driver produksi (fetch dimock)', () => {
 
     expect(result.usage.inputTokens).toBeGreaterThan(0);
     expect(result.usage.outputTokens).toBeGreaterThan(0);
+  });
+
+  it('retry: 500 lalu sukses → satu percobaan ulang, hasil akhir valid', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(okBody));
+    fetchMock.mockImplementationOnce(async () => new Response('boom', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new AnthropicLLM('sk', 'm', undefined, { retryDelayMs: 5 });
+    const result = await llm.complete({ task: 'code', prompt: 'x', context: { projectName: 'p' } });
+
+    expect(result.text).toBe('Halo dari model');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('retry habis: 503 → 3 percobaan (maxRetries=2) lalu melempar status terakhir', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response('down', { status: 503 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new AnthropicLLM('sk', 'm', undefined, { retryDelayMs: 5 });
+    await expect(
+      llm.complete({ task: 'code', prompt: 'x', context: { projectName: 'p' } }),
+    ).rejects.toThrow(/503/);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('timeout: request melewati batas waktu → error jelas tanpa percobaan ulang', async () => {
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new AnthropicLLM('sk', 'm', undefined, {
+      timeoutMs: 25,
+      maxRetries: 0,
+      retryDelayMs: 5,
+    });
+    await expect(
+      llm.complete({ task: 'code', prompt: 'x', context: { projectName: 'p' } }),
+    ).rejects.toThrow(/timed out after 25ms/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
