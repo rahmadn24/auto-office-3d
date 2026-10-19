@@ -7,8 +7,6 @@ import { PmChatDock } from '../components/briefing/PmChatDock';
 import { DivisionSidebar } from '../components/overlays/DivisionSidebar';
 import { AgentStream } from '../components/overlays/AgentStream';
 import { CameraPresets } from '../components/overlays/CameraPresets';
-import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
-import { PerfOverlay } from '../components/overlays/PerfOverlay';
 import { AppShell } from '../components/shell/AppShell';
 
 const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
@@ -32,15 +30,13 @@ export default function HomePage(): ReactNode {
   return (
     <AppShell>
       <OfficeScene />
-      <CelebrationOverlay />
-      <PerfOverlay />
       {/* Pemilih 5 preset kamera cinematic (PRD §4.3) — meeting/devOps terjangkau. */}
       <CameraPresets />
       {/* Layout DESIGN.md: kolom kiri — sidebar divisi di atas, floating chat PM
           (Briefing Room) di bawahnya. xl: 280px; tablet: rail 48px + chat 300px;
           mobile: chat mengambang di atas bottom dock. */}
       <div className="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col justify-end gap-3 md:inset-x-auto md:bottom-4 md:left-6 md:top-8 md:w-[300px] md:justify-start xl:left-8 xl:w-[280px]">
-        <div className="pointer-events-auto flex min-h-0 flex-col overflow-hidden">
+        <div className="pointer-events-auto flex min-h-0 flex-col overflow-hidden md:max-h-[46%]">
           <DivisionSidebar anchored={false} />
         </div>
         {/* Chat PM bisa diciutkan jadi pill/FAB — composer + GO pindah dari tab

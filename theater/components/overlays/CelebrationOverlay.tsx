@@ -36,7 +36,6 @@ function playFanfare(ctx: AudioContext): void {
  */
 export function CelebrationOverlay(): ReactNode {
   const celebrating = useOffice((s) => s.celebrating);
-  const celebrateAll = useOffice((s) => s.celebrateAll);
   const milestone = useBrain((s) => s.milestone);
   const [showBanner, setShowBanner] = useState(false);
   const audioRef = useRef<AudioContext | null>(null);
@@ -97,20 +96,28 @@ export function CelebrationOverlay(): ReactNode {
         </div>
       </div>
 
-      {/* Tombol simulasi demo — di atas Founder Command Bar (var shell). */}
-      <button
-        type="button"
-        onClick={(): void => celebrateAll()}
-        disabled={celebrating}
-        style={{ bottom: 'calc(1.25rem + var(--shell-bottom-space, 0px))' }}
-        className={`fixed right-5 z-50 rounded-full border px-4 py-2 font-mono text-mono-label uppercase tracking-wider backdrop-blur transition-all duration-300 ${
-          celebrating
-            ? 'cursor-default border-secondary/40 bg-surface-container-high/70 text-on-surface-variant opacity-60'
-            : 'cursor-pointer border-secondary/60 bg-surface-container-lowest/85 text-secondary shadow-[0_0_24px_-8px_rgba(78,222,163,0.6)] hover:bg-secondary hover:text-on-secondary'
-        }`}
-      >
-        {celebrating ? '🎉 Celebrating…' : 'Trigger Celebrate ($29.00 ARR)'}
-      </button>
+      {/* Tombol simulasi demo kini di nav AppShell (tidak menutupi Agent Stream). */}
     </>
+  );
+}
+
+/** Tombol demo Trigger Celebrate — dipasang di nav AppShell (kanan, samping perf). */
+export function CelebrateButton(): ReactNode {
+  const celebrating = useOffice((s) => s.celebrating);
+  const celebrateAll = useOffice((s) => s.celebrateAll);
+
+  return (
+    <button
+      type="button"
+      onClick={(): void => celebrateAll()}
+      disabled={celebrating}
+      className={`rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-all duration-300 ${
+        celebrating
+          ? 'cursor-default border-secondary/40 bg-surface-container-high/70 text-on-surface-variant opacity-60'
+          : 'cursor-pointer border-secondary/60 bg-surface-container-lowest/85 text-secondary hover:bg-secondary hover:text-on-secondary'
+      }`}
+    >
+      {celebrating ? '🎉 Celebrating…' : 'Trigger Celebrate ($29.00 ARR)'}
+    </button>
   );
 }

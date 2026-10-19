@@ -17,7 +17,7 @@ Ide Founder → BRIEFING (diskusi multi-turn sama PM) → GO
 ```
 
 - **The Brain** (`brain/`) — daemon backend: orkestrasi LangGraph, memori vector RAG, sandbox eksekusi kode, driver LLM & integrasi cloud.
-- **The Theater** (`theater/`) — HUD web Next.js + React Three Fiber: kantor 3D low-poly isometrik 5 zona, tiap aksi agen direfleksikan sebagai avatar berjalan/mengetik bicara lewat speech bubble, lengkap dengan Founder Command Bar untuk mengeluarkan instruksi.
+- **The Theater** (`theater/`) — HUD web Next.js + React Three Fiber: kantor 3D low-poly isometrik 5 zona, tiap aksi agen direfleksikan sebagai avatar berjalan/mengetik bicara lewat speech bubble, lengkap dengan floating chat PM (briefing) + tombol GO untuk memulai run otonom.
 
 Semua driver **env-gated** — tanpa API key apa pun, sistem tetap jalan penuh memakai driver `stub` / `memory` / `local` (offline, deterministik). Begitu kredensial diisi di `brain/.env`, driver otomatis berganti ke yang produksi (`anthropic`, `pinecone`, `vercel`, `e2b`, dsb).
 
@@ -95,7 +95,7 @@ auto-office-3d/
 │   ├── app/                # App Router
 │   ├── components/
 │   │   ├── scene/          # OfficeScene, Floor, ZoneMatrix, Furniture, NeuralBus
-│   │   ├── shell/          # AppShell + Founder Command Bar
+│   │   ├── shell/          # AppShell (nav + footer)
 │   │   ├── pipeline/       # Telemetry pipeline (teks)
 │   │   ├── artifacts/      # Artefak run (PRD, kode, hasil QA)
 │   │   └── overlays/       # PerfOverlay, CelebrateOverlay, dll
@@ -124,7 +124,7 @@ npm test                # kontrak zona/kamera (59 test)
 npm run build           # next build (produksi)
 ```
 
-Cara paling cepat mencoba: jalankan Brain (`npm run dev`), jalankan Theater (`npm run dev`), lalu ketik satu ide di **Founder Command Bar** (footer) — tekan Enter, dan lihat tim agen 3D mulai bekerja.
+Cara paling cepat mencoba: jalankan Brain (`npm run dev`), jalankan Theater (`npm run dev`), lalu diskusi dengan PM di **floating chat** (kiri-bawah) dan tekan **GO — mulai run otonom**; tim agen 3D langsung bekerja.
 
 ## Dokumen & referensi
 

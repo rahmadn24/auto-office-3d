@@ -6,21 +6,17 @@
  *   1. Nyalakan Brain (LLM stub, memori in-process, DATA_DIR temporer) :4899.
  *   2. Nyalakan Theater (`next dev`) :3101.
  *   3. Buka Chrome headless → tunggu badge "SOCKET.IO CONNECTED".
- *   4. Kirim directive founder via FounderCommandBar (fast-path).
- *   5. Verifikasi E2E: observer socket mendengar `agent:status_update` dari Brain
- *      (directive dari UI benar-benar memulai pipeline) + UI menandai directive
- *      ter-queue (counter riwayat "↺ 1").
- *   6. Briefing (Fase 8): floating chat PM di Office Theater → chat Founder→PM
- *      dari UI → observer mendengar `pm:reply` → tombol GO mengompilasi brief
- *      dan mengirim `founder:directive` (run otonom kedua).
- *   7. Payment (Fase 9): buka /terminal → tombol "Simulate Payment" →
+ *   4. Floating PM chat (Fase 8): chat Founder→PM dari UI → observer mendengar
+ *      `pm:reply` → tombol GO mengompilasi brief dan mengirim
+ *      `founder:directive` → pipeline otonom berjalan (agent:status_update).
+ *   5. Payment (Fase 9): buka /terminal → tombol "Simulate Payment" →
  *      observer mendengar `milestone:first_sale` (provider stub) → banner
  *      CELEBRATE "FIRST CUSTOMER ACQUIRED" muncul di UI.
- *   8. Event Replay (Fase 10): playback run durable di tab /pipeline.
- *   9. CS Agent (Fase 11): widget di /demo/widget → `cs:message` + lead baru →
+ *   6. Event Replay (Fase 10): playback run durable di tab /pipeline.
+ *   7. CS Agent (Fase 11): widget di /demo/widget → `cs:message` + lead baru →
  *      CS Inbox /inbox → tombol quote → `payment:link_created` + kontrak PDF →
  *      bayar via /demo/pay → `lead:update` deal + badge DEAL di UI.
- *  10. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
+ *   8. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
  *
  * Env: E2E_BRAIN_PORT (4899), E2E_THEATER_PORT (3101), E2E_TIMEOUT_MS (150000),
  *      E2E_VERBOSE=0 untuk senyapkan log service.
@@ -42,7 +38,6 @@ const BRAIN_PORT = Number(process.env.E2E_BRAIN_PORT ?? 4899);
 const THEATER_PORT = Number(process.env.E2E_THEATER_PORT ?? 3101);
 const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS ?? 150_000);
 const VERBOSE = process.env.E2E_VERBOSE !== '0';
-const DIRECTIVE = 'e2e smoke — bangun landing page dan deploy ke vercel';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -167,29 +162,9 @@ async function main() {
       );
       console.log('✓ theater tersambung ke brain (SOCKET.IO CONNECTED)');
 
-      await page.locator('input[aria-label="Tulis directive founder"]').fill(DIRECTIVE);
-      // Form spesifik: sekarang ada 2 form (chat PM + founder command bar).
-      await page.locator('form[aria-label="Founder command bar"] button[type="submit"]').click();
-      console.log('» directive dikirim dari UI');
-
-      const deadline = Date.now() + TIMEOUT_MS;
-      while (statusEvents.length === 0 && Date.now() < deadline) await sleep(500);
-      if (statusEvents.length === 0) {
-        throw new Error('tidak ada agent:status_update dari brain setelah directive dikirim');
-      }
-      console.log(`✓ pipeline mulai — ${statusEvents.length} status diterima dari brain`);
-
-      await page.waitForFunction(
-        () =>
-          document.querySelector('[aria-label="Riwayat directive"]')?.textContent?.includes('1'),
-        undefined,
-        { timeout: 10_000 },
-      );
-      console.log('✓ directive ter-queue di founder command bar (riwayat ↺ 1)');
-
-      // ── Floating PM chat (Fase 8): chat Founder→PM + GO dari UI ────────────
+      // ── Floating PM chat (Fase 8): satu-satunya input — chat → GO ──────────
       // Dock kiri-bawah di Office Theater (terbuka default); tidak ada route
-      // /briefing lagi — jadi tak perlu navigasi, cukup tunggu inputnya tampil.
+      // /briefing maupun Founder Command Bar lagi.
       await page.waitForSelector('input[aria-label="Tulis pesan untuk PM"]', {
         timeout: 10_000,
       });
@@ -243,6 +218,13 @@ async function main() {
       console.log(
         '✓ GO — brief terkompilasi terkirim sebagai founder:directive (run otonom jalan)',
       );
+
+      const statusDeadline = Date.now() + TIMEOUT_MS;
+      while (statusEvents.length === 0 && Date.now() < statusDeadline) await sleep(500);
+      if (statusEvents.length === 0) {
+        throw new Error('tidak ada agent:status_update dari brain setelah GO');
+      }
+      console.log(`✓ pipeline mulai — ${statusEvents.length} status diterima dari brain`);
 
       // ── Payment demo (Fase 9): Simulate Payment → milestone + CELEBRATE ────
       await page.goto(`http://127.0.0.1:${THEATER_PORT}/terminal`, {
