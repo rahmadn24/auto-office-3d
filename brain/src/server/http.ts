@@ -1,19 +1,26 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
 
 import type { Server } from 'socket.io';
 
 import type { RunControl } from '../control';
+import type { CsService } from '../cs/service';
+import { socketIoClientFile, WIDGET_JS, widgetDemoPage } from '../cs/widget';
 import { EventBus } from '../events';
 import { isDemoPayment, type PaymentProvider, type WebhookOutcome } from '../payments';
 import { formatMoney, type Telemetry } from '../types';
 
 /**
  * HTTP surface Brain (Fase 9 — hasil pemecahan `server/socket.ts`):
- *   GET  /health                — status daemon + payment sentinel
- *   POST /control/halt|resume   — Loop Controls (PRD §3.2)
- *   POST /webhook/<provider>    — webhook gateway aktif (stripe/midtrans/stub/xendit)
- *   GET  /demo/checkout         — halaman bayar stub (demo tanpa akun)
- *   POST /demo/pay              — simulasi bayar → webhook internal (driver stub)
+ *   GET  /health                     — status daemon + payment sentinel
+ *   POST /control/halt|resume        — Loop Controls (PRD §3.2)
+ *   POST /webhook/<provider>         — webhook gateway aktif (stripe/midtrans/stub/xendit)
+ *   GET/POST /webhook/whatsapp       — WhatsApp Cloud API (verify + inbound, Fase 11)
+ *   POST /webhook/email              — email inbound Mailgun/Postmark (Fase 11)
+ *   GET  /cs/contracts/<lead>.pdf    — kontrak PDF hasil closing flow (Fase 11)
+ *   GET  /widget/*, /demo/widget     — widget channel + halaman demo (Fase 11)
+ *   GET  /demo/checkout              — halaman bayar stub (demo tanpa akun)
+ *   POST /demo/pay                   — simulasi bayar → webhook internal (driver stub)
  *
  * Handler dibuat sebagai factory agar io (broadcast) & payment provider
  * di-inject dari bootstrap socket — perilaku lama tidak berubah.
@@ -25,6 +32,10 @@ export interface HttpHandlerOptions {
   controlTelemetry: Telemetry;
   /** io untuk `control:state` — getter agar aman dibuat sebelum io.listen(). */
   getIo: () => Server;
+  /** CS Agent service (Fase 11) — webhook omnichannel + kontrak PDF. */
+  cs?: CsService;
+  /** Konfigurasi widget channel (URL publik Brain + path socket). */
+  widget?: { baseUrl: string; socketPath: string };
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -70,12 +81,30 @@ function demoPage(bodyHtml: string, title = 'AutoOffice3D · Demo Checkout'): st
 export function createHttpHandler(
   opts: HttpHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
-  const { bus, control, payment, controlTelemetry, getIo } = opts;
+  const { bus, control, payment, controlTelemetry, getIo, cs, widget } = opts;
   const webhookPath = `/webhook/${payment.id}`;
   const demo = isDemoPayment(payment) ? payment : null;
 
   function broadcastRevenue(runId: string): void {
     bus.revenue({ ...payment.metrics(), runId, timestamp: new Date().toISOString() });
+  }
+
+  /**
+   * Dampak satu webhook settlement (lintas gateway): milestone + revenue, dan
+   * (Fase 11) tandai lead CS yang ditagih sebagai `deal` + ucapan terima kasih.
+   */
+  function afterSale(outcome: WebhookOutcome, runIdFallback: string): void {
+    if (outcome.sale) bus.milestone(outcome.sale);
+    broadcastRevenue(outcome.sale?.runId ?? runIdFallback);
+    if (cs && outcome.leadId && outcome.sale) {
+      void cs
+        .markDeal(outcome.leadId, {
+          amount: outcome.sale.amount,
+          currency: outcome.sale.currency,
+          provider: outcome.provider,
+        })
+        .catch(() => undefined);
+    }
   }
 
   return (req, res) => {
@@ -140,8 +169,7 @@ export function createHttpHandler(
           });
           return;
         }
-        if (outcome.sale) bus.milestone(outcome.sale);
-        broadcastRevenue(outcome.sale?.runId ?? 'webhook');
+        afterSale(outcome, 'webhook');
         const status = outcome.accepted
           ? 200
           : outcome.reason === 'invalid-signature'
@@ -162,6 +190,130 @@ export function createHttpHandler(
           metrics: payment.metrics(),
         });
       });
+      return;
+    }
+
+    /* ───────────── Fase 11 — CS Agent: omnichannel + closing (PRD §3.5) ───────────── */
+
+    // WhatsApp Cloud API — verifikasi challenge (GET) sebelum webhook diaktifkan.
+    if (req.method === 'GET' && req.url?.startsWith('/webhook/whatsapp')) {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      if (
+        cs?.verifyWhatsAppChallenge({
+          mode: params.get('hub.mode'),
+          token: params.get('hub.verify_token'),
+        })
+      ) {
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end(params.get('hub.challenge') ?? '');
+      } else {
+        json(res, 403, { ok: false, error: 'verify token mismatch' });
+      }
+      return;
+    }
+
+    // WhatsApp Cloud API — pesan masuk (dinormalisasi adapter → CS Agent).
+    if (req.method === 'POST' && req.url === '/webhook/whatsapp') {
+      if (!cs) {
+        json(res, 503, { ok: false, error: 'cs agent tidak aktif' });
+        return;
+      }
+      void readBody(req).then(async (body) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          json(res, 400, { ok: false, error: 'invalid json' });
+          return;
+        }
+        const result = await cs.handleWhatsAppInbound(parsed);
+        json(res, 200, {
+          ok: true,
+          received: true,
+          handled: result.handled,
+          ...(result.leadId ? { leadId: result.leadId } : {}),
+        });
+      });
+      return;
+    }
+
+    // Email inbound (Mailgun/Postmark) — secret header dijaga adapter.
+    if (req.method === 'POST' && req.url === '/webhook/email') {
+      if (!cs) {
+        json(res, 503, { ok: false, error: 'cs agent tidak aktif' });
+        return;
+      }
+      void readBody(req).then(async (body) => {
+        const result = await cs.handleEmailInbound({
+          rawBody: body,
+          headers: req.headers,
+          contentType: String(req.headers['content-type'] ?? ''),
+        });
+        if (!result.ok) {
+          json(res, result.error === 'invalid-secret' ? 401 : 400, {
+            ok: false,
+            error: result.error,
+          });
+          return;
+        }
+        json(res, 200, {
+          ok: true,
+          handled: result.handled,
+          ...(result.leadId ? { leadId: result.leadId } : {}),
+        });
+      });
+      return;
+    }
+
+    // Kontrak PDF hasil closing flow (server-side generated, PRD §3.5).
+    if (req.method === 'GET' && req.url) {
+      const contract = /^\/cs\/contracts\/([A-Za-z0-9._-]+)\.pdf$/.exec(req.url);
+      const leadKey = contract?.[1];
+      if (leadKey) {
+        const pdf = cs?.readContract(leadKey) ?? null;
+        if (!pdf) {
+          json(res, 404, { ok: false, error: 'kontrak belum diterbitkan untuk lead ini' });
+          return;
+        }
+        res.writeHead(200, {
+          'content-type': 'application/pdf',
+          'content-disposition': `inline; filename="${leadKey}.pdf"`,
+          'content-length': pdf.length,
+        });
+        res.end(pdf);
+        return;
+      }
+    }
+
+    // Widget channel — aset statis disajikan Brain (tanpa CDN, aman offline).
+    if (req.method === 'GET' && req.url === '/widget/widget.js') {
+      res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' });
+      res.end(WIDGET_JS);
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/widget/socket.io.min.js') {
+      const file = socketIoClientFile();
+      if (!file) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('socket.io-client tidak terpasang di brain (npm i socket.io-client)');
+        return;
+      }
+      const js = readFileSync(file);
+      res.writeHead(200, {
+        'content-type': 'application/javascript; charset=utf-8',
+        'content-length': js.length,
+      });
+      res.end(js);
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/demo/widget')) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(
+        widgetDemoPage(
+          widget?.baseUrl ?? 'http://localhost:4800',
+          widget?.socketPath ?? '/brain-server',
+        ),
+      );
       return;
     }
 
@@ -223,8 +375,7 @@ memicu webhook internal dan memancarkan <code>milestone:first_sale</code> + <cod
             return;
           }
           const outcome = payment.receiveWebhook(notification, 'demo');
-          if (outcome.sale) bus.milestone(outcome.sale);
-          broadcastRevenue(outcome.sale?.runId ?? 'demo');
+          afterSale(outcome, 'demo');
           const link = demo.peekLink(orderId);
           res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
           res.end(

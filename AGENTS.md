@@ -18,16 +18,21 @@ scripts/  Tooling root (dev orchestrator).
 ```
 
 Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.ts`
-(node graph) · `brain/src/server/http.ts` (health/control/webhook/demo) ·
+(node graph) · `brain/src/server/http.ts` (health/control/webhook/demo/widget/kontrak) ·
 `brain/src/server/socket.ts` (bootstrap + io handlers, termasuk `run:replay`) ·
 `brain/src/payments/` (Payment Sentinel multi-provider: provider.ts + driver
 stripe/midtrans/stub/xendit + factory `createPayment`) ·
+`brain/src/cs/` (CS Agent Fase 11: `service.ts` omnichannel + closing, `leads.ts`
+store durable `leads`/`cs_messages`, `channels.ts` adapter widget/WA/email,
+`contract.ts` PDF tanpa dependency, `widget.ts` aset widget) ·
 `brain/src/products/presets/` (preset stack tier-1 `landing`/`saas-fullstack`/
 `custom-app`: halaman + Dockerfile template + gate sendiri) ·
 `brain/src/integrations/dockerdeploy.ts` (DEPLOY_DRIVER=docker: build → run
 `demo-net` → health probe → READY) · `brain/src/briefing.ts` (Briefing Room:
 founder:chat/pm:reply, compile brief) ·
 `theater/components/briefing/BriefingRoom.tsx` (tab Briefing Room) ·
+`theater/components/cs/CsInbox.tsx` + `theater/store/csStore.ts` (tab `/inbox`:
+omnichannel lead + quote/kontrak + sweep follow-up) ·
 `theater/components/pipeline/RunReplayPanel.tsx` + `theater/store/replayStore.ts`
 (playback event replay) · `theater/app/layout.tsx` (BrainBridge socket sekali
 untuk semua tab) · `theater/store/brainStore.ts` (state dari event) ·
@@ -97,6 +102,16 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
 - Payment Sentinel (jangan regresi): signature invalid saat secret terpasang →
   `401` + `firstSale:false` tanpa menaikkan metrics; valid → `200` + sale.
   Route webhook mengikuti driver aktif: `/webhook/{stripe|midtrans|stub|xendit}`.
+- CS Agent (Fase 11, jangan regresi): lead id dari handoff Marketer deterministik
+  per run (`lead_<runId>_<n>`) → resume tidak menduplikasi; quote otomatis hanya
+  mengirim SATU pesan (artefak link+kontrak dibuat tanpa kirim); WA di luar
+  jendela 24 jam → template HSM; webhook email wajib header
+  `x-cs-inbound-secret` bila secret di-set.
+- Aset `/widget/socket.io.min.js` dicari relatif ke entry `socket.io-client`
+  (package `exports` memblokir subpath `dist/*`); jangan kembali ke
+  `require.resolve('socket.io-client/dist/...')`.
+- `cs:list`/`cs:history` butuh payload objek pada emit (`emit(event, {}, cb)`) —
+  `state:request` justru ack tunggal tanpa payload (`emit(event, cb)`).
 
 ## Alur kerja yang diharapkan
 

@@ -7,6 +7,8 @@ export const MEMORY_NAMESPACES = [
   'marketing-mem',
   // Fase 8 — Briefing Room: transkrip diskusi Founder↔PM (durable, selamat restart).
   'briefing',
+  // Fase 11 — CS Agent: ingatan interaksi client lintas channel (mini-CRM recall).
+  'leads',
 ] as const;
 export type MemoryNamespace = (typeof MEMORY_NAMESPACES)[number];
 

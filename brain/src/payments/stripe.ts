@@ -20,6 +20,8 @@ export interface StripeEvent {
       currency?: string;
       customer_details?: { email?: string; address?: { city?: string; country?: string } };
       customer?: string;
+      /** Metadata Payment Link — konvensi lead CS (`lead_id`, Fase 11). */
+      metadata?: Record<string, string>;
     };
   };
 }
@@ -121,6 +123,7 @@ export class StripeSentinel extends BasePaymentSentinel {
       'line_items[0][price_data][currency]': input.currency.toLowerCase(),
       'line_items[0][price_data][unit_amount]': String(unitAmount),
       'line_items[0][price_data][product_data][name]': input.productName ?? `Deal ${input.leadId}`,
+      'metadata[lead_id]': input.leadId,
     });
     const res = await this.fetchImpl('https://api.stripe.com/v1/payment_links', {
       method: 'POST',
@@ -187,6 +190,7 @@ export class StripeSentinel extends BasePaymentSentinel {
       },
       timestamp: event.created ? new Date(event.created * 1000).toISOString() : nowIso(),
       label: `${event.type} · ${obj.customer ?? 'cus_unknown'}`,
+      ...(obj.metadata?.lead_id ? { leadId: obj.metadata.lead_id } : {}),
     };
   }
 

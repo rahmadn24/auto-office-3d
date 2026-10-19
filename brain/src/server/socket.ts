@@ -10,8 +10,13 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import type { BriefingService } from '../briefing';
 import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
+import { CsService, EmailChannelAdapter, WhatsAppAdapter, WidgetAdapter } from '../cs';
+import type { LeadsStore } from '../cs';
+import { contractsDir } from '../durability/paths';
 import type { RunStore } from '../durability/store';
 import { EventBus } from '../events';
+import type { EmailDriver } from '../integrations/types';
+import type { LLMProvider } from '../llm/provider';
 import { createPayment, type PaymentProvider } from '../payments';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import type {
@@ -34,6 +39,7 @@ import {
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
+  parseLeadUpdate,
   parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
@@ -50,6 +56,8 @@ export interface BrainServer {
   port: number;
   url: string;
   control: RunControl;
+  /** CS Agent service (Fase 11) — aktif bila leads/llm/memory/email tersedia. */
+  cs?: CsService;
   close(): Promise<void>;
 }
 
@@ -64,6 +72,12 @@ export interface SocketServerOptions {
   checkpointer?: BaseCheckpointSaver;
   /** Briefing Room (Fase 8) — founder:chat → pm:reply + compile brief (GO). */
   briefing?: BriefingService;
+  /** Leads store bersama (Fase 11) — handoff Marketer → CS Inbox. */
+  leads?: LeadsStore;
+  /** LLM provider untuk balasan CS (task `cs`). */
+  llm?: LLMProvider;
+  /** Driver email — channel inbound/outbound CS (Fase 11). */
+  email?: EmailDriver;
 }
 
 /**
@@ -95,6 +109,41 @@ export async function startSocketServer(
   const store = opts.store;
   const briefing = opts.briefing;
 
+  // CS Agent (Fase 11) — dibangun sebelum HTTP handler (webhook & kontrak ikut
+  // memakainya); broadcast memakai ioRef karena io baru dibuat setelah handler.
+  let ioRef: Server | null = null;
+  const cs =
+    opts.leads && opts.llm && opts.email && memory
+      ? new CsService({
+          store: opts.leads,
+          memory,
+          llm: opts.llm,
+          payment,
+          email: opts.email,
+          adapters: {
+            widget: new WidgetAdapter(),
+            whatsapp: new WhatsAppAdapter({
+              driver: config.whatsappDriver,
+              ...(config.whatsappAccessToken ? { accessToken: config.whatsappAccessToken } : {}),
+              ...(config.whatsappPhoneNumberId
+                ? { phoneNumberId: config.whatsappPhoneNumberId }
+                : {}),
+              ...(config.whatsappVerifyToken ? { verifyToken: config.whatsappVerifyToken } : {}),
+              templateName: config.whatsappTemplateName,
+            }),
+            email: new EmailChannelAdapter({
+              email: opts.email,
+              ...(config.emailInboundSecret ? { inboundSecret: config.emailInboundSecret } : {}),
+            }),
+          },
+          broadcast: (event, payload) => ioRef?.emit(event, payload),
+          contractsDir: contractsDir(config.dataDir),
+          publicBaseUrl: config.csPublicBaseUrl,
+          followupDelayMs: config.csFollowupDelayMs,
+          maxFollowups: config.csMaxFollowups,
+        })
+      : undefined;
+
   // Metrik revenue yang sudah diperbarui disiarkan setelah webhook/simulasi (PRD §3.4).
   function broadcastRevenue(runId: string): void {
     bus.revenue({ ...payment.metrics(), runId, timestamp: new Date().toISOString() });
@@ -107,6 +156,8 @@ export async function startSocketServer(
     payment,
     controlTelemetry,
     getIo: () => io,
+    ...(cs ? { cs } : {}),
+    ...(cs ? { widget: { baseUrl: config.csWidgetUrl, socketPath: config.socketPath } } : {}),
   });
 
   // WSS: sertifikat TLS disediakan lewat env (BRAIN_TLS_CERT / BRAIN_TLS_KEY) —
@@ -129,6 +180,7 @@ export async function startSocketServer(
     pingInterval: 10_000,
     pingTimeout: 5_000,
   });
+  ioRef = io;
 
   const offAgent = bus.onAgent((payload) => {
     const parsed = parseAgentStatus(payload);
@@ -193,6 +245,14 @@ export async function startSocketServer(
     latestArtifacts = parsed.payload;
     io.emit('artifacts:ready', parsed.payload);
   });
+  const offLead = bus.onLead((payload) => {
+    const parsed = parseLeadUpdate(payload);
+    if (!parsed.ok) {
+      console.warn(`[brain] lead:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      return;
+    }
+    io.emit('lead:update', parsed.payload);
+  });
 
   io.on('connection', (socket) => {
     /** Satu playback replay aktif per socket (kartu 10.4). */
@@ -214,6 +274,8 @@ export async function startSocketServer(
         email: config.emailDriver,
         social: config.socialDriver,
         payment: config.paymentDriver,
+        whatsapp: config.whatsappDriver,
+        cs: cs ? 'on' : 'off',
       },
       limits: {
         maxIterations: config.maxIterations,
@@ -245,6 +307,7 @@ export async function startSocketServer(
         memory: memorySizes,
         runs: store ? store.listRuns(20) : [],
         control: control.snapshot(),
+        leads: cs ? cs.inbox(20) : [],
         generatedAt: new Date().toISOString(),
       };
       socket.emit('state:snapshot', snapshot);
@@ -270,6 +333,16 @@ export async function startSocketServer(
       const outcome = payment.simulateSale(runId);
       if (outcome.sale) bus.milestone(outcome.sale);
       broadcastRevenue(runId);
+      // Lead CS yang ditagih (bila simulasi membawa konteksnya) ikut jadi deal.
+      if (cs && outcome.leadId && outcome.sale) {
+        void cs
+          .markDeal(outcome.leadId, {
+            amount: outcome.sale.amount,
+            currency: outcome.sale.currency,
+            provider: outcome.provider,
+          })
+          .catch(() => undefined);
+      }
       ack?.({
         ok: outcome.accepted,
         provider: payment.id,
@@ -342,6 +415,7 @@ export async function startSocketServer(
         control,
         checkpointer: opts.checkpointer,
         store,
+        ...(opts.leads ? { leads: opts.leads } : {}),
       }).catch((err: unknown) => {
         console.error(`[brain] resume ${runId} failed:`, err);
       });
@@ -438,6 +512,7 @@ export async function startSocketServer(
         control,
         checkpointer: opts.checkpointer,
         store,
+        ...(opts.leads ? { leads: opts.leads } : {}),
       }).catch((err: unknown) => {
         console.error('[brain] autonomous run failed:', err);
       });
@@ -513,6 +588,112 @@ export async function startSocketServer(
         ack?.({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     });
+
+    /* ───────── Fase 11 — CS Agent: omnichannel inbox + closing (PRD §3.5) ───────── */
+
+    // cs:list → ringkasan inbox (lead + pesan terakhir + jumlah pesan).
+    socket.on('cs:list', (input: unknown, ack?: (r: unknown) => void) => {
+      if (!cs) {
+        ack?.({ ok: false, error: 'cs agent unavailable' });
+        return;
+      }
+      const limit = (input as { limit?: unknown } | undefined)?.limit;
+      ack?.({
+        ok: true,
+        entries: cs.inbox(
+          typeof limit === 'number' && limit > 0 ? Math.min(Math.floor(limit), 200) : 50,
+        ),
+      });
+    });
+
+    // cs:history → transkrip satu percakapan (dipakai CS Inbox saat membuka thread).
+    socket.on('cs:history', (input: unknown, ack?: (r: unknown) => void) => {
+      const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
+      if (!cs) {
+        ack?.({ ok: false, error: 'cs agent unavailable' });
+        return;
+      }
+      if (typeof conversationId !== 'string' || conversationId.trim().length === 0) {
+        ack?.({ ok: false, error: 'conversationId required' });
+        return;
+      }
+      ack?.({ ok: true, conversationId, turns: cs.history(conversationId.trim()) });
+    });
+
+    // cs:widget_message → visitor halaman demo mengirim pesan (channel widget).
+    socket.on('cs:widget_message', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (!cs) {
+        ack?.({ ok: false, error: 'cs agent unavailable' });
+        return;
+      }
+      const rec = input as { visitorId?: unknown; name?: unknown; message?: unknown } | null;
+      const visitorId = typeof rec?.visitorId === 'string' ? rec.visitorId.trim() : '';
+      const message = typeof rec?.message === 'string' ? rec.message.trim() : '';
+      if (!visitorId || !message) {
+        ack?.({ ok: false, error: 'visitorId & message required' });
+        return;
+      }
+      ack?.({ ok: true, queued: true });
+      try {
+        await cs.handleWidgetMessage({
+          visitorId,
+          message,
+          ...(typeof rec?.name === 'string' && rec.name.trim() ? { name: rec.name.trim() } : {}),
+        });
+      } catch (err) {
+        // Widget jangan tertinggal menunggu — kirim turn error eksplisit.
+        const fallback: ChatTurnPayload = {
+          conversationId: `cs:widget:${visitorId.toLowerCase()}`,
+          channel: 'cs_widget',
+          role: 'agent',
+          agentId: 'cs_agent',
+          message: `⚠️ gagal memproses pesan: ${err instanceof Error ? err.message : String(err)}`,
+          timestamp: new Date().toISOString(),
+        };
+        io.emit('cs:message', fallback);
+      }
+    });
+
+    // cs:quote → aksi cepat CS Inbox: quote → payment link + kontrak PDF.
+    socket.on('cs:quote', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (!cs) {
+        ack?.({ ok: false, error: 'cs agent unavailable' });
+        return;
+      }
+      const rec = input as
+        | { leadId?: unknown; amount?: unknown; currency?: unknown; productName?: unknown }
+        | null
+        | undefined;
+      const leadId = typeof rec?.leadId === 'string' ? rec.leadId.trim() : '';
+      if (!leadId) {
+        ack?.({ ok: false, error: 'leadId required' });
+        return;
+      }
+      const quoteInput: { amount?: number; currency?: 'USD' | 'IDR'; productName?: string } = {};
+      if (typeof rec?.amount === 'number' && rec.amount > 0) quoteInput.amount = rec.amount;
+      if (rec?.currency === 'USD' || rec?.currency === 'IDR') quoteInput.currency = rec.currency;
+      if (typeof rec?.productName === 'string' && rec.productName.trim()) {
+        quoteInput.productName = rec.productName.trim();
+      }
+      const result = await cs.quote(leadId, quoteInput);
+      if (!result.ok) {
+        ack?.({ ok: false, error: result.error });
+        return;
+      }
+      ack?.({ ok: true, lead: result.lead, link: result.link, contractUrl: result.contractUrl });
+    });
+
+    // cs:sweep → jalankan follow-up engine sekarang (demo/e2e; scheduler tetap jalan).
+    socket.on('cs:sweep', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (!cs) {
+        ack?.({ ok: false, error: 'cs agent unavailable' });
+        return;
+      }
+      // Default force=true (tombol demo); kirim {force:false} untuk hanya yang jatuh tempo.
+      const force = (input as { force?: unknown } | undefined)?.force !== false;
+      const result = await cs.sweep({ force });
+      ack?.({ ok: true, ...result });
+    });
   });
 
   const port = config.port;
@@ -526,6 +707,7 @@ export async function startSocketServer(
     httpServer,
     port,
     control,
+    ...(cs ? { cs } : {}),
     url: `${useTls ? 'wss' : 'ws'}://localhost:${port}${config.socketPath}`,
     async close() {
       offAgent();
@@ -535,6 +717,7 @@ export async function startSocketServer(
       offSocial();
       offRetrieval();
       offArtifacts();
+      offLead();
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     },

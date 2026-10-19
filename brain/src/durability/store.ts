@@ -325,6 +325,16 @@ export class RunStore {
           },
         }),
       ),
+      // Fase 11 — handoff Marketer → CS (lead masuk ke mini-CRM).
+      bus.onLead((p) =>
+        this.appendEvent({
+          runId: p.lead.conversationId.startsWith('cs:') ? p.lead.id : 'cs',
+          kind: 'lead',
+          agent: 'marketing_agent',
+          message: `${p.reason} · ${p.lead.source} · ${p.lead.contact}`,
+          payload: { leadId: p.lead.id, status: p.lead.status, reason: p.reason },
+        }),
+      ),
     ];
     return () => offs.forEach((off) => off());
   }

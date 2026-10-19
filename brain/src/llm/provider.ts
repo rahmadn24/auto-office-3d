@@ -2,7 +2,7 @@
 
 import type { BriefPreset } from '../types';
 
-export type LLMTask = 'prd' | 'code' | 'briefing' | 'brief';
+export type LLMTask = 'prd' | 'code' | 'briefing' | 'brief' | 'cs';
 
 export interface LLMContext {
   projectName: string;
@@ -76,6 +76,19 @@ export function briefSystemPrompt(): string {
     'Reply with ONLY a JSON object of this exact shape and no commentary:',
     '{"audience": string, "features": string[], "preset": "landing" | "saas-fullstack" | "custom-app", "pricing": string, "summary": string}',
     'features: 3-5 must-have capabilities. pricing: one concrete anchor (e.g. "$29/mo").',
+  ].join('\n');
+}
+
+/* ───────── Fase 11 — CS Agent (PRD §3.5) ───────── */
+
+/** Prompt CS — balas pertanyaan client, ajukan quote, jaga thread tetap ramah. */
+export function csSystemPrompt(): string {
+  return [
+    'You are the Customer Success Agent of AutoOffice3D (Division: Customer Success).',
+    'A client is chatting with you from an omnichannel inbox (widget, WhatsApp, or email).',
+    'Answer their question about the product, reference retrieved memory when relevant,',
+    'and when they show buying intent propose one concrete quote (price + what is included).',
+    'Keep replies under 90 words, write in the same language as the client, professional and warm.',
   ].join('\n');
 }
 

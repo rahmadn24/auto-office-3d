@@ -2,6 +2,7 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { MemorySaver } from '@langchain/langgraph';
 
 import { createControl, GraphHaltedError, type RunControl } from './control';
+import type { LeadsStore } from './cs/leads';
 import type { RunStatus, RunStore } from './durability/store';
 import { EventBus } from './events';
 import { buildOrchestrator, type Orchestrator } from './graph/build';
@@ -120,6 +121,8 @@ export interface RunOptions {
   runId?: string;
   /** Run history + event log durable (PRD v3.0 §4.4). */
   store?: RunStore;
+  /** Leads store bersama (Fase 11) — handoff Marketer → CS Inbox. */
+  leads?: LeadsStore;
 }
 
 /** Status durable dari stage akhir run (PRD v3.0 §4.4). */
@@ -137,6 +140,7 @@ function buildDeps(
   control: RunControl,
   memory: MemoryProvider,
   payment: PaymentProvider,
+  leads?: LeadsStore,
 ): GraphDeps {
   return {
     llm: createLLM(config),
@@ -151,6 +155,7 @@ function buildDeps(
     social: createSocial(config),
     email: createEmail(config),
     payment,
+    ...(leads ? { leads } : {}),
   };
 }
 
@@ -188,6 +193,7 @@ export async function runAutonomous(
     control,
     memory,
     options.payment ?? createPayment(config),
+    options.leads,
   );
 
   const runId = options.runId ?? `run_${Date.now().toString(36)}`;
@@ -281,6 +287,7 @@ export async function resumeAutonomous(
     control,
     memory,
     options.payment ?? createPayment(config),
+    options.leads,
   );
   const checkpointer = options.checkpointer ?? new MemorySaver();
   const app = buildOrchestrator(deps, { checkpointer });

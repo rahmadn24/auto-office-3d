@@ -24,6 +24,8 @@ export interface NormalizedWebhook {
   timestamp?: string;
   /** Label ringkas untuk panel "Last Event" Theater. */
   label: string;
+  /** Lead CS yang ditagih (Fase 11) — diteruskan ke WebhookOutcome. */
+  leadId?: string;
 }
 
 /** `null` = payload tak dikenali; `{ rejected }` = ditolak dengan alasan spesifik. */
@@ -113,6 +115,7 @@ export abstract class BasePaymentSentinel implements PaymentProvider {
         eventId: n.eventId,
         sale: null,
         duplicate: true,
+        ...(n.leadId ? { leadId: n.leadId } : {}),
       };
     }
     this.seen.add(n.eventId);
@@ -136,6 +139,7 @@ export abstract class BasePaymentSentinel implements PaymentProvider {
       status: n.status,
       eventId: n.eventId,
       sale,
+      ...(n.leadId ? { leadId: n.leadId } : {}),
     };
   }
 

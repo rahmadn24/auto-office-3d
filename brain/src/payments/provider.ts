@@ -37,6 +37,8 @@ export interface WebhookOutcome {
   /** true bila event valid tapi sudah pernah diproses. */
   duplicate?: boolean;
   reason?: WebhookRejectReason;
+  /** Lead CS yang ditagih (bila gateway membawa konteksnya, Fase 11). */
+  leadId?: string;
 }
 
 export interface CreatePaymentLinkInput {

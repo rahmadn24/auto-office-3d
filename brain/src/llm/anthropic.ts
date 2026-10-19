@@ -2,6 +2,7 @@ import {
   briefSystemPrompt,
   briefingSystemPrompt,
   codeSystemPrompt,
+  csSystemPrompt,
   estimateTokens,
   prdSystemPrompt,
   type LLMProvider,
@@ -33,7 +34,7 @@ function errorName(err: unknown): string {
     : '';
 }
 
-/** System prompt per task — PRD/codegen fase 1–7; briefing/brief Fase 8. */
+/** System prompt per task — PRD/codegen fase 1–7; briefing/brief Fase 8; cs Fase 11. */
 function systemFor(task: LLMTask): string {
   switch (task) {
     case 'prd':
@@ -44,6 +45,8 @@ function systemFor(task: LLMTask): string {
       return briefSystemPrompt();
     case 'briefing':
       return briefingSystemPrompt();
+    case 'cs':
+      return csSystemPrompt();
   }
 }
 
@@ -122,7 +125,9 @@ export class AnthropicLLM implements LLMProvider {
       request.context.thread ? `\nConversation so far:\n${request.context.thread}` : '',
       request.task === 'brief'
         ? `\nBriefing transcript:\n${request.prompt}`
-        : `\nFounder directive:\n${request.prompt}`,
+        : request.task === 'cs'
+          ? `\nClient message:\n${request.prompt}`
+          : `\nFounder directive:\n${request.prompt}`,
     ].join('\n');
 
     const res = await this.post({

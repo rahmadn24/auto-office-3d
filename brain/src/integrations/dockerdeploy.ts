@@ -39,6 +39,10 @@ export interface DockerDeployOptions {
   /** Biarkan build context di disk (debug/test). */
   keepContext?: boolean;
   commandTimeoutMs?: number;
+  /** URL publik Brain untuk widget CS di halaman produk (Fase 11). */
+  widgetUrl?: string;
+  /** Path socket Brain (`/brain-server`) yang dipakai widget. */
+  widgetSocketPath?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -144,6 +148,8 @@ export class DockerDeploy implements DeployDriver {
   private readonly probeHealth: (url: string) => Promise<boolean>;
   private readonly workRoot: string;
   private readonly keepContext: boolean;
+  private readonly widgetUrl?: string;
+  private readonly widgetSocketPath?: string;
 
   constructor(options: DockerDeployOptions = {}) {
     this.network = options.network ?? 'demo-net';
@@ -158,6 +164,8 @@ export class DockerDeploy implements DeployDriver {
     this.probeHealth = options.probeHealth ?? defaultProbeHealth;
     this.workRoot = options.workRoot ?? tmpdir();
     this.keepContext = options.keepContext ?? false;
+    this.widgetUrl = options.widgetUrl;
+    this.widgetSocketPath = options.widgetSocketPath;
   }
 
   async deploy(input: DeployInput): Promise<DeployResult> {
@@ -212,6 +220,14 @@ export class DockerDeploy implements DeployDriver {
       tagline,
       pricing,
       runId,
+      ...(this.widgetUrl
+        ? {
+            widget: {
+              url: this.widgetUrl,
+              ...(this.widgetSocketPath ? { socketPath: this.widgetSocketPath } : {}),
+            },
+          }
+        : {}),
     });
 
     let workspace: string | null = null;

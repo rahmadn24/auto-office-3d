@@ -9,7 +9,10 @@ import {
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
+  parseLead,
+  parseLeadUpdate,
   parseMemoryRetrieval,
+  parsePaymentLink,
   parseReplayFrame,
   parseRevenueUpdate,
   parseRunRecord,
@@ -17,9 +20,11 @@ import {
   type AgentStatusPayload,
   type BriefPayload,
   type ChatTurnPayload,
+  type InboxEntry,
 } from '@/lib/events';
 import { useBriefing } from '@/store/briefingStore';
 import { useBrain } from '@/store/brainStore';
+import { useCsInbox, type CsQuoteResult, type CsSweepSummary } from '@/store/csStore';
 import { useReplay } from '@/store/replayStore';
 import { AGENT_ROSTER, useOffice, type AnimState, type AgentId } from '@/store/officeStore';
 import { ZONE_BY_KEY, type ZoneKey } from '@/lib/zones';
@@ -35,6 +40,12 @@ import { ZONE_BY_KEY, type ZoneKey } from '@/lib/zones';
 
 const BRAIN_URL = process.env.NEXT_PUBLIC_BRAIN_URL ?? 'http://localhost:4800';
 const BRAIN_PATH = process.env.NEXT_PUBLIC_BRAIN_PATH ?? '/brain-server';
+
+/** URL HTTP Brain (halaman demo widget, kontrak PDF, health) — dipakai UI theater. */
+export function brainHttpUrl(pathname: string): string {
+  const base = BRAIN_URL.replace(/\/+$/, '');
+  return `${base}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
+}
 
 let socket: Socket | null = null;
 /** Interval probe ping round-trip (badge PING xxms). */
@@ -90,6 +101,20 @@ function requestSnapshot(s: Socket): void {
   s.emit('state:request', () => {
     /* ack dari brain; snapshot juga dikirim lewat event state:snapshot */
   });
+}
+
+/** Validasi satu entri CS Inbox (ack `cs:list` & snapshot `leads`). */
+function parseInboxEntry(raw: unknown): InboxEntry | null {
+  const entryRaw = raw as { lead?: unknown; lastMessage?: unknown; messageCount?: unknown } | null;
+  if (!entryRaw) return null;
+  const lead = parseLead(entryRaw.lead);
+  if (!lead.ok) return null;
+  const last = entryRaw.lastMessage == null ? null : parseChatTurn(entryRaw.lastMessage);
+  return {
+    lead: lead.payload,
+    lastMessage: last && last.ok ? last.payload : null,
+    messageCount: typeof entryRaw.messageCount === 'number' ? entryRaw.messageCount : 0,
+  };
 }
 
 export function connectBrain(): Socket {
@@ -150,6 +175,7 @@ export function connectBrain(): Socket {
       social?: unknown[];
       retrieval?: unknown[];
       runs?: unknown[];
+      leads?: unknown[];
       memory?: Record<string, number>;
       control?: { haltedAll?: boolean; runIds?: string[] };
       artifacts?: unknown;
@@ -180,6 +206,9 @@ export function connectBrain(): Socket {
       .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
       .map((r) => r.payload);
     useReplay.getState().setRuns(runs);
+    // Fase 11 — CS Inbox terisi langsung saat fresh load / deep-link tab.
+    const leads = (s.leads ?? []).map(parseInboxEntry).filter((e): e is InboxEntry => e !== null);
+    useCsInbox.getState().setEntries(leads);
     useBrain.getState().hydrateSnapshot({
       agents,
       milestones,
@@ -293,6 +322,34 @@ export function connectBrain(): Socket {
     const frame = parsed.payload;
     if (frame.phase === 'start') useReplay.getState().begin(frame.runId, frame.total);
     else useReplay.getState().applyFrame(frame);
+  });
+
+  // Fase 11 — CS Agent: lead berubah (handoff/status/quote), balasan CS, & link.
+  socket.on('lead:update', (raw: unknown) => {
+    const parsed = parseLeadUpdate(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] lead:update DITOLAK:', parsed.issues);
+      return;
+    }
+    useCsInbox.getState().applyUpdate(parsed.payload);
+  });
+
+  socket.on('cs:message', (raw: unknown) => {
+    const parsed = parseChatTurn(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] cs:message DITOLAK:', parsed.issues);
+      return;
+    }
+    useCsInbox.getState().pushTurn(parsed.payload);
+  });
+
+  socket.on('payment:link_created', (raw: unknown) => {
+    const parsed = parsePaymentLink(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] payment:link_created DITOLAK:', parsed.issues);
+      return;
+    }
+    useCsInbox.getState().applyPaymentLink(parsed.payload);
   });
 
   return socket;
@@ -451,6 +508,126 @@ export function replayRun(
 export function cancelReplay(): void {
   useReplay.getState().stop();
   socket?.emit('run:replay', { cancel: true });
+}
+
+/* ───────── Fase 11 — CS Agent: omnichannel inbox + closing (PRD §3.5) ───────── */
+
+/** Ringkasan CS Inbox dari brain (lead + pesan terakhir + jumlah pesan). */
+export function fetchCsInbox(limit = 50): Promise<InboxEntry[]> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve([]);
+      return;
+    }
+    const timer = setTimeout(() => resolve([]), 5000);
+    socket.emit('cs:list', { limit }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; entries?: unknown[] } | null;
+      if (!a || a.ok !== true || !Array.isArray(a.entries)) {
+        resolve([]);
+        return;
+      }
+      resolve(a.entries.map(parseInboxEntry).filter((e): e is InboxEntry => e !== null));
+    });
+  });
+}
+
+/** Transkrip satu percakapan client (durable di brain `cs_messages`). */
+export function fetchCsHistory(conversationId: string): Promise<ChatTurnPayload[]> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve([]);
+      return;
+    }
+    const timer = setTimeout(() => resolve([]), 5000);
+    socket.emit('cs:history', { conversationId }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; turns?: unknown[] } | null;
+      if (!a || a.ok !== true || !Array.isArray(a.turns)) {
+        resolve([]);
+        return;
+      }
+      resolve(
+        a.turns
+          .map((t) => parseChatTurn(t))
+          .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+          .map((r) => r.payload),
+      );
+    });
+  });
+}
+
+/** Quote manual dari CS Inbox: payment link + kontrak PDF dikirim ke client. */
+export function requestCsQuote(input: {
+  leadId: string;
+  amount?: number;
+  currency?: 'USD' | 'IDR';
+  productName?: string;
+}): Promise<{ ok: true; quote: CsQuoteResult } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'brain offline — sambungkan socket dulu' });
+      return;
+    }
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (15s)' }), 15_000);
+    socket.emit('cs:quote', input, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as {
+        ok?: unknown;
+        error?: unknown;
+        link?: unknown;
+        contractUrl?: unknown;
+      } | null;
+      if (!a || a.ok !== true || typeof a.contractUrl !== 'string') {
+        resolve({ ok: false, error: typeof a?.error === 'string' ? a.error : 'nack' });
+        return;
+      }
+      const checkoutUrl = (a.link as { checkoutUrl?: unknown } | null)?.checkoutUrl;
+      const quote: CsQuoteResult = {
+        leadId: input.leadId,
+        checkoutUrl: typeof checkoutUrl === 'string' ? checkoutUrl : '',
+        contractUrl: a.contractUrl,
+      };
+      useCsInbox.getState().setLastQuote(quote);
+      resolve({ ok: true, quote });
+    });
+  });
+}
+
+/** Jalankan follow-up engine sekarang (tombol demo; scheduler brain tetap jalan). */
+export function runCsSweep(
+  force = true,
+): Promise<{ ok: true; summary: CsSweepSummary } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'brain offline — sambungkan socket dulu' });
+      return;
+    }
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (15s)' }), 15_000);
+    socket.emit('cs:sweep', { force }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as {
+        ok?: unknown;
+        error?: unknown;
+        checked?: unknown;
+        sent?: unknown;
+        templates?: unknown;
+        lost?: unknown;
+      } | null;
+      if (!a || a.ok !== true) {
+        resolve({ ok: false, error: typeof a?.error === 'string' ? a.error : 'nack' });
+        return;
+      }
+      const summary: CsSweepSummary = {
+        checked: typeof a.checked === 'number' ? a.checked : 0,
+        sent: typeof a.sent === 'number' ? a.sent : 0,
+        templates: typeof a.templates === 'number' ? a.templates : 0,
+        lost: typeof a.lost === 'number' ? a.lost : 0,
+      };
+      useCsInbox.getState().setLastSweep(summary);
+      resolve({ ok: true, summary });
+    });
+  });
 }
 
 export function getBrainSocket(): Socket | null {
