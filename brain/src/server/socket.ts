@@ -38,6 +38,11 @@ import {
   parseRevenueUpdate,
   parseSocialPost,
 } from './contract';
+import type { ReplayEventPayload, ReplayFramePayload } from './contract';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface BrainServer {
   io: Server;
@@ -190,6 +195,13 @@ export async function startSocketServer(
   });
 
   io.on('connection', (socket) => {
+    /** Satu playback replay aktif per socket (kartu 10.4). */
+    let replaySession: { cancelled: boolean } | null = null;
+    socket.on('disconnect', () => {
+      if (replaySession) replaySession.cancelled = true;
+      replaySession = null;
+    });
+
     socket.emit('system:hello', {
       service: 'brain',
       version: BRAIN_VERSION,
@@ -333,6 +345,84 @@ export async function startSocketServer(
       }).catch((err: unknown) => {
         console.error(`[brain] resume ${runId} failed:`, err);
       });
+    });
+
+    // EVENT REPLAY (kartu 10.4 — PRD §7): putar ulang run masa lalu dari event
+    // log durable (`run_events`) ke klien peminta. Frame: start → event* → end.
+    socket.on('run:replay', async (input: unknown, ack?: (r: unknown) => void) => {
+      const rec = input as
+        { runId?: unknown; stepMs?: unknown; limit?: unknown; cancel?: unknown } | null | undefined;
+
+      // Batal: klien menghentikan playback yang sedang berjalan.
+      if (rec?.cancel === true) {
+        if (replaySession) replaySession.cancelled = true;
+        ack?.({ ok: true, cancelled: true });
+        return;
+      }
+
+      const runId = typeof rec?.runId === 'string' ? rec.runId.trim() : '';
+      if (!store) {
+        ack?.({ ok: false, error: 'run store unavailable' });
+        return;
+      }
+      if (!runId) {
+        ack?.({ ok: false, error: 'runId required' });
+        return;
+      }
+      const run = store.getRun(runId);
+      if (!run) {
+        ack?.({ ok: false, error: `run ${runId} tidak ditemukan` });
+        return;
+      }
+
+      const limit =
+        typeof rec?.limit === 'number' && rec.limit > 0
+          ? Math.min(Math.floor(rec.limit), 1000)
+          : 500;
+      const stepMs =
+        typeof rec?.stepMs === 'number' ? Math.max(0, Math.min(rec.stepMs, 2000)) : 120;
+      const events = store.listEvents(runId, limit);
+      ack?.({ ok: true, runId, total: events.length, stepMs, run });
+
+      // Satu playback per socket — request baru menggantikan yang lama.
+      if (replaySession) replaySession.cancelled = true;
+      const session = { cancelled: false };
+      replaySession = session;
+
+      const frame = (
+        phase: 'start' | 'event' | 'end',
+        index: number,
+        event?: ReplayEventPayload,
+      ): void => {
+        const payload: ReplayFramePayload = {
+          phase,
+          runId,
+          total: events.length,
+          index,
+          timestamp: new Date().toISOString(),
+        };
+        if (event) payload.event = event;
+        socket.emit('run:replay', payload);
+      };
+
+      frame('start', 0);
+      let index = 0;
+      for (const record of events) {
+        if (session.cancelled || !socket.connected) break;
+        index += 1;
+        frame('event', index, {
+          seq: index,
+          id: record.id,
+          ts: record.ts,
+          kind: record.kind,
+          ...(record.agent ? { agent: record.agent } : {}),
+          ...(record.message ? { message: record.message } : {}),
+          ...(record.payload !== undefined ? { payload: record.payload } : {}),
+        });
+        if (stepMs > 0) await sleep(stepMs);
+      }
+      if (replaySession === session) replaySession = null;
+      if (!session.cancelled && socket.connected) frame('end', index);
     });
 
     socket.on('founder:directive', async (prompt: unknown, ack?: (r: unknown) => void) => {

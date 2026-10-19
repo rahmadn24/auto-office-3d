@@ -12,6 +12,7 @@ import { composeLaunchThread } from '../integrations';
 import type { PaymentProvider } from '../payments';
 import { parseFileBundle, type LLMProvider } from '../llm/provider';
 import type { MemoryProvider } from '../memory/provider';
+import { detectPreset, resolvePreset } from '../products/presets';
 import type { SandboxDriver } from '../sandbox/types';
 import { safeBuildBundle } from '../safeBuild';
 import { slugify } from '../slug';
@@ -187,6 +188,8 @@ export function pmNode(deps: GraphDeps) {
     ].join('\n');
     const prd = `${signature}${result.text}`;
     const prdPath = `specs/PRD-${slugify(state.projectName)}.md`;
+    // Pemilihan preset stack (kartu 10.1): brief eksplisit → keyword → default.
+    const preset = detectPreset(state.founderPrompt);
 
     // Sintesis disimpan kembali ke memori (Milestone #3 — recall siklus berikutnya)
     await deps.memory.upsert('pm-memory', [
@@ -202,15 +205,19 @@ export function pmNode(deps: GraphDeps) {
       state.runId,
       'pm_agent',
       'discussing',
-      `Synthesized ${prdPath} · recall ${recall.length} vectors (top ${(recall[0]?.score ?? 0).toFixed(2)}) · seed #${seed}`,
+      `Synthesized ${prdPath} · preset ${preset} · recall ${recall.length} vectors (top ${(recall[0]?.score ?? 0).toFixed(2)}) · seed #${seed}`,
       { zone: 'meeting_room', latencyMs },
     );
 
     return {
       stage: 'spec',
+      preset,
       prd,
       artifacts: { ...state.artifacts, [prdPath]: prd },
-      logs: appendLog(state.logs, `PM · PRD written to ${prdPath} (seed #${seed})`),
+      logs: appendLog(
+        state.logs,
+        `PM · PRD written to ${prdPath} (preset ${preset}, seed #${seed})`,
+      ),
       model: result.model,
       tokensUsed: deps.budget.total,
       latencyMs,
@@ -384,6 +391,7 @@ export function devopsNode(deps: GraphDeps) {
     haltGate(deps, state);
 
     const slug = slugify(state.projectName);
+    const preset = resolvePreset(state.preset);
     const startedAt = new Date().toISOString();
 
     // 1) GitHub Repository Provisioning (PRD §3.3).
@@ -423,17 +431,22 @@ export function devopsNode(deps: GraphDeps) {
     let status: DeployUpdatePayload['status'] = repoOk ? 'deploying' : 'degraded';
     let buildSteps: DeployUpdatePayload['buildSteps'] = [];
     let meta = { uptimeS: 0, bandwidthMb: 0, edgeCache: false };
+    let degradedReason: string | undefined;
     if (deps.deploy && repoOk) {
       const deployed = await deps.deploy.deploy({
         slug,
         files: state.artifacts,
+        projectName: state.projectName,
+        runId: state.runId,
+        preset: preset.id,
+        directive: state.founderPrompt,
         onStep: (steps, stepStatus) => {
           buildSteps = steps;
           emitDeploy(deps, {
             runId: state.runId,
             repoName: slug,
             repoUrl,
-            liveUrl: stepStatus === 'ready' ? `${slug}.vercel.app` : '',
+            liveUrl: '',
             status: stepStatus,
             buildSteps: steps,
             health: null,
@@ -445,6 +458,7 @@ export function devopsNode(deps: GraphDeps) {
       liveUrl = deployed.liveUrl || liveUrl;
       status = deployed.status;
       buildSteps = deployed.buildSteps;
+      degradedReason = deployed.degradedReason;
       meta = {
         uptimeS: deployed.uptimeS,
         bandwidthMb: deployed.bandwidthMb,
@@ -474,7 +488,7 @@ export function devopsNode(deps: GraphDeps) {
       buildSteps,
       health,
       ...meta,
-      degradedReason: status === 'degraded' ? 'health check failed' : undefined,
+      degradedReason: status === 'degraded' ? (degradedReason ?? 'health check failed') : undefined,
       timestamp: new Date().toISOString(),
     });
 
@@ -490,8 +504,8 @@ export function devopsNode(deps: GraphDeps) {
       'devops_agent',
       'deploying',
       status === 'ready'
-        ? `edge_provision → repo ${slug} · build READY · ${healthText} · https://${liveUrl}`
-        : `edge_provision DEGRADED → ${slug} · ${healthText}`,
+        ? `edge_provision → repo ${slug} · preset ${preset.id} · build READY · ${healthText} · https://${liveUrl}`
+        : `edge_provision DEGRADED → ${slug} · preset ${preset.id} · ${healthText}`,
       { zone: 'devops_hub' },
     );
 

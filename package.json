@@ -13,6 +13,7 @@
     "test": "npm --prefix brain test && npm --prefix theater test",
     "typecheck": "npm --prefix brain run typecheck && npm --prefix theater run typecheck",
     "build": "npm --prefix theater run build",
-    "e2e": "npm --prefix theater run e2e"
+    "e2e": "npm --prefix theater run e2e",
+    "e2e:docker": "npm --prefix brain run smoke:docker"
   }
 }

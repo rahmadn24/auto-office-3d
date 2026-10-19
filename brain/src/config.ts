@@ -31,7 +31,15 @@ const EnvSchema = z.object({
   E2B_API_KEY: z.string().optional(),
 
   // Integrations (PRD §3.3 & §3.4) — driver offline default, live env-gated
-  DEPLOY_DRIVER: z.enum(['auto', 'local', 'vercel']).default('auto'),
+  DEPLOY_DRIVER: z.enum(['auto', 'local', 'vercel', 'docker']).default('auto'),
+  /**
+   * Interface host untuk publish port demo container (`-p host:port:container`).
+   * Compose office stack memakai `0.0.0.0` supaya probe dari dalam Brain bisa
+   * menjangkau instance demo lewat `DEPLOY_PROBE_HOST=host.docker.internal`.
+   */
+  DEPLOY_PUBLISH_HOST: z.string().default('127.0.0.1'),
+  /** Host untuk URL health probe demo (Fase 10 — driver docker). */
+  DEPLOY_PROBE_HOST: z.string().default('127.0.0.1'),
   GITHUB_TOKEN: z.string().optional(),
   VERCEL_TOKEN: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -71,7 +79,9 @@ export interface Config {
   sandboxDriver: 'local' | 'e2b';
   sandboxTimeoutMs: number;
   e2bApiKey?: string;
-  deployDriver: 'local' | 'vercel';
+  deployDriver: 'local' | 'vercel' | 'docker';
+  deployPublishHost: string;
+  deployProbeHost: string;
   githubToken?: string;
   vercelToken?: string;
   stripeWebhookSecret?: string;
@@ -114,6 +124,8 @@ export function loadConfig(
       : e.MEMORY_DRIVER;
   const sandboxDriver =
     e.SANDBOX_DRIVER === 'auto' ? (e.E2B_API_KEY ? 'e2b' : 'local') : e.SANDBOX_DRIVER;
+  // `auto` tidak pernah memilih `docker` (butuh daemon lokal) — driver demo
+  // container hanya aktif bila DEPLOY_DRIVER=docker eksplisit (Fase 10).
   const deployDriver =
     e.DEPLOY_DRIVER === 'auto' ? (e.VERCEL_TOKEN ? 'vercel' : 'local') : e.DEPLOY_DRIVER;
   // Payment Sentinel multi-provider (PRD §3.4 Fase 9): auto → gateway live
@@ -185,6 +197,8 @@ export function loadConfig(
     sandboxTimeoutMs: e.SANDBOX_TIMEOUT_MS,
     e2bApiKey: e.E2B_API_KEY,
     deployDriver,
+    deployPublishHost: e.DEPLOY_PUBLISH_HOST,
+    deployProbeHost: e.DEPLOY_PROBE_HOST,
     githubToken: e.GITHUB_TOKEN,
     vercelToken: e.VERCEL_TOKEN,
     stripeWebhookSecret: e.STRIPE_WEBHOOK_SECRET,

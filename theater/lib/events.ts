@@ -307,3 +307,62 @@ export function parseBrief(raw: unknown): ContractParse<BriefPayload> {
   if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
   return { ok: true, payload: parsed.data };
 }
+
+/* ───────── Fase 10 — Event Replay: run:replay (paritas brain/src/server/contract.ts) ───────── */
+
+export const RUN_STATUSES = ['running', 'completed', 'halted', 'failed', 'interrupted'] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
+/** Baris riwayat run (RunStore brain) — snapshot & panel replay. */
+export const RunRecordSchema = z.object({
+  runId: z.string().min(1),
+  directive: z.string(),
+  projectName: z.string(),
+  status: z.enum(RUN_STATUSES),
+  stage: z.string(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  tokensUsed: z.number().nonnegative(),
+  liveUrl: z.string(),
+  repoUrl: z.string(),
+});
+export type RunRecordPayload = z.infer<typeof RunRecordSchema>;
+
+export const ReplayEventSchema = z.object({
+  /** Posisi event dalam urutan replay (1..total). */
+  seq: z.number().int().nonnegative(),
+  /** id row run_events (urutan durable). */
+  id: z.number().int().nonnegative(),
+  ts: z.string().min(1),
+  kind: z.string().min(1),
+  agent: z.string().optional(),
+  message: z.string().optional(),
+  payload: z.unknown().optional(),
+});
+export type ReplayEventPayload = z.infer<typeof ReplayEventSchema>;
+
+export const REPLAY_PHASES = ['start', 'event', 'end'] as const;
+export type ReplayPhase = (typeof REPLAY_PHASES)[number];
+
+/** Satu frame playback `run:replay` (start → event* → end). */
+export const ReplayFrameSchema = z.object({
+  phase: z.enum(REPLAY_PHASES),
+  runId: z.string().min(1),
+  total: z.number().int().nonnegative(),
+  index: z.number().int().nonnegative(),
+  event: ReplayEventSchema.optional(),
+  timestamp: z.string().min(1),
+});
+export type ReplayFramePayload = z.infer<typeof ReplayFrameSchema>;
+
+export function parseRunRecord(raw: unknown): ContractParse<RunRecordPayload> {
+  const parsed = RunRecordSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parseReplayFrame(raw: unknown): ContractParse<ReplayFramePayload> {
+  const parsed = ReplayFrameSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}

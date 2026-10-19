@@ -1,0 +1,76 @@
+# AutoOffice3D — office stack (PRD §7 Fase 10, disiapkan untuk soak Fase 12).
+#
+#   docker compose up --build
+#     → Theater  http://office.localhost
+#     → Brain    http://api.office.localhost (+ ws://localhost:4800/brain-server)
+#     → demo     http://localhost:4510+ (mapping port; wildcard *.demo.localhost di Fase 12)
+#
+# Demo container (DEPLOY_DRIVER=docker) dibangun lewat socket Docker yang
+# di-mount ke Brain; container demo hidup di network `demo-net` — terpisah dari
+# network `office`, sehingga tidak bisa menjangkau Brain/9router/DATA_DIR.
+name: autooffice3d
+
+services:
+  brain:
+    build: ./brain
+    environment:
+      PORT: 4800
+      SOCKET_PATH: /brain-server
+      DATA_DIR: /app/data
+      DEPLOY_DRIVER: docker
+      # Port demo di-publish ke host (bukan loopback container) supaya health
+      # probe dari dalam Brain tetap bisa menjangkau instance demo.
+      DEPLOY_PUBLISH_HOST: 0.0.0.0
+      DEPLOY_PROBE_HOST: host.docker.internal
+      LLM_DRIVER: ${LLM_DRIVER:-stub}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      MODEL: ${MODEL:-claude-3-5-sonnet-latest}
+      MEMORY_DRIVER: ${MEMORY_DRIVER:-lancedb}
+      DOCKER_BUILDKIT: 1
+    ports:
+      - '4800:4800'
+    volumes:
+      - brain-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - office
+
+  theater:
+    build: ./theater
+    environment:
+      # Bridge socket dijalankan di browser (host) → pakai loopback host.
+      NEXT_PUBLIC_BRAIN_URL: http://localhost:4800
+    ports:
+      - '3001:3000'
+    depends_on:
+      - brain
+    networks:
+      - office
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - brain
+      - theater
+    ports:
+      - '80:80'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      # office: route ke brain/theater; demo-net: siap reverse-proxy ke
+      # container demo (wildcard *.demo.localhost — Fase 12).
+      - office
+      - demo-net
+
+volumes:
+  brain-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  office:
+  demo-net:
+    name: demo-net

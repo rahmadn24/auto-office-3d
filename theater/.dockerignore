@@ -1,0 +1,9 @@
+node_modules
+.next
+coverage
+tests
+scripts
+.DS_Store
+*.log
+.env
+.env.*

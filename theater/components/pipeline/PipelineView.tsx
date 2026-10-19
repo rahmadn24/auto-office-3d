@@ -7,6 +7,7 @@ import { formatTokens } from '@/lib/format';
 import type { AgentId } from '@/lib/events';
 import { GLASS } from '@/lib/ui';
 import { StatusChip } from '@/components/ui/StatusChip';
+import { RunReplayPanel } from '@/components/pipeline/RunReplayPanel';
 import { useBrain } from '@/store/brainStore';
 
 /* ───────────────────────── Primitives ───────────────────────── */
@@ -388,6 +389,7 @@ export function PipelineView(): ReactNode {
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 xl:gap-6">
           <div className="flex flex-col gap-3 lg:col-span-2 xl:gap-6">
             <AgentCards />
+            <RunReplayPanel />
           </div>
           <div className="flex flex-col gap-3 xl:gap-6">
             <VectorInspector />
