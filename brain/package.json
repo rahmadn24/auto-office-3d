@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AutoOffice3D — The Brain: LangGraph.js autonomous agent daemon with sandboxed code execution and Socket.io telemetry.",
+  "description": "AutoOffice3D \u2014 The Brain: LangGraph.js autonomous agent daemon with sandboxed code execution and Socket.io telemetry.",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
     "simulate": "tsx src/simulate.ts",
-    "bench": "node scripts/bench-llm.mjs",
-    "bench:stub": "node scripts/bench-llm.mjs --stub",
+    "bench": "node --env-file-if-exists=.env scripts/bench-llm.mjs",
+    "bench:stub": "node --env-file-if-exists=.env scripts/bench-llm.mjs --stub",
     "smoke:docker": "node scripts/docker-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

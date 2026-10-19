@@ -13,6 +13,12 @@ export interface OpenAICompatLLMOptions {
   maxRetries?: number;
   /** Jeda dasar backoff eksponensial (ms). Default 500. */
   retryDelayMs?: number;
+  /**
+   * Override model per LLMTask (`prd`/`code`/`briefing`/`brief`/`cs`). Dipakai
+   * 9router untuk memetakan divisi ke model berbeda (GLM/DeepSeek/MiMo);
+   * task tanpa entry memakai model default konstruktor.
+   */
+  taskModels?: Partial<Record<string, string>>;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -52,6 +58,7 @@ export class OpenAICompatLLM implements LLMProvider {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+  private readonly taskModels: Partial<Record<string, string>>;
 
   constructor(
     private readonly apiKey: string,
@@ -62,6 +69,7 @@ export class OpenAICompatLLM implements LLMProvider {
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.maxRetries = options.maxRetries ?? 2;
     this.retryDelayMs = options.retryDelayMs ?? 500;
+    this.taskModels = options.taskModels ?? {};
   }
 
   get endpoint(): string {
@@ -105,6 +113,7 @@ export class OpenAICompatLLM implements LLMProvider {
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
+    const model = this.taskModels[request.task] ?? this.model;
     const system = systemPromptFor(request.task);
     const user = [
       `Project name: ${request.context.projectName}`,
@@ -121,7 +130,7 @@ export class OpenAICompatLLM implements LLMProvider {
     ].join('\n');
 
     const res = await this.post({
-      model: this.model,
+      model,
       max_tokens: 4096,
       messages: [
         { role: 'system', content: system },
@@ -142,7 +151,7 @@ export class OpenAICompatLLM implements LLMProvider {
 
     return {
       text,
-      model: this.model,
+      model,
       usage: {
         inputTokens: json.usage?.prompt_tokens ?? estimateTokens(user + system),
         outputTokens: json.usage?.completion_tokens ?? estimateTokens(text),

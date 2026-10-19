@@ -9,7 +9,8 @@ import { COVERAGE_THRESHOLD } from './sandbox/types';
  * Satu putaran benchmark untuk SATU kandidat model (PRD v3.0 §2.2 — model veto).
  * Dipanggil oleh `scripts/bench-llm.mjs` via tsx dengan env per kandidat:
  *
- *   LLM_DRIVER=anthropic ANTHROPIC_BASE_URL=... ANTHROPIC_API_KEY=... MODEL=... \
+ *   LLM_DRIVER=openai-compat OPENAI_COMPAT_BASE_URL=... \
+ *   OPENAI_COMPAT_API_KEY=... OPENAI_COMPAT_MODEL=... \
  *   node --import tsx src/benchRun.ts
  *
  * Yang diuji bukan "bisa ngobrol", tapi 2 tugas produksi yang benar-benar
