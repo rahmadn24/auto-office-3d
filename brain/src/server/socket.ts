@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 
+import type { BriefingService } from '../briefing';
 import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
 import type { RunStore } from '../durability/store';
@@ -16,6 +17,7 @@ import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import type {
   AgentStatusPayload,
   ArtifactsPayload,
+  ChatTurnPayload,
   DeployUpdatePayload,
   FirstSalePayload,
   MemoryRetrievalPayload,
@@ -27,6 +29,8 @@ import { BRAIN_VERSION } from '../version';
 import {
   parseAgentStatus,
   parseArtifacts,
+  parseBrief,
+  parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
@@ -52,6 +56,8 @@ export interface SocketServerOptions {
   store?: RunStore;
   /** Checkpointer durable — run dari socket ikut bisa di-resume setelah restart. */
   checkpointer?: BaseCheckpointSaver;
+  /** Briefing Room (Fase 8) — founder:chat → pm:reply + compile brief (GO). */
+  briefing?: BriefingService;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -88,6 +94,7 @@ export async function startSocketServer(
   let latestArtifacts: ArtifactsPayload | null = null;
   const memory = opts.memory;
   const store = opts.store;
+  const briefing = opts.briefing;
 
   // Setelah webhook Stripe diterima → siarkan revenue metrics yang sudah diperbarui.
   function broadcastRevenue(runId: string): void {
@@ -413,6 +420,77 @@ export async function startSocketServer(
       }).catch((err: unknown) => {
         console.error('[brain] autonomous run failed:', err);
       });
+    });
+
+    /* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */
+
+    // founder:chat { conversationId, message } → PM agent → pm:reply (broadcast).
+    // Ack konsisten dengan founder:directive: langsung `queued`, balasan menyusul.
+    socket.on('founder:chat', async (input: unknown, ack?: (r: unknown) => void) => {
+      const rec = input as { conversationId?: unknown; message?: unknown } | null;
+      const conversationId =
+        typeof rec?.conversationId === 'string' ? rec.conversationId.trim() : '';
+      const message = typeof rec?.message === 'string' ? rec.message.trim() : '';
+      if (!briefing) {
+        ack?.({ ok: false, error: 'briefing service unavailable' });
+        return;
+      }
+      if (!conversationId || !message) {
+        ack?.({ ok: false, error: 'conversationId & message required' });
+        return;
+      }
+      ack?.({ ok: true, queued: true });
+      try {
+        const turn = await briefing.handleTurn({ conversationId, message });
+        const parsed = parseChatTurn(turn);
+        if (!parsed.ok) {
+          console.warn(`[brain] pm:reply DITOLAK (skema tidak valid): ${parsed.issues}`);
+          return;
+        }
+        io.emit('pm:reply', parsed.payload);
+      } catch (err) {
+        // Jangan biarkan UI tertinggal di "typing" — kirim turn error eksplisit.
+        const fallback: ChatTurnPayload = {
+          conversationId,
+          channel: 'briefing',
+          role: 'agent',
+          agentId: 'pm_agent',
+          message: `⚠️ gagal memproses pesan: ${err instanceof Error ? err.message : String(err)}`,
+          timestamp: new Date().toISOString(),
+        };
+        io.emit('pm:reply', fallback);
+      }
+    });
+
+    // Riwayat thread durable (reload/restart) — dipanggil UI saat mount/reconnect.
+    socket.on('briefing:history', async (input: unknown, ack?: (r: unknown) => void) => {
+      const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
+      if (!briefing || typeof conversationId !== 'string' || conversationId.trim().length === 0) {
+        ack?.({ ok: false, error: 'conversationId required' });
+        return;
+      }
+      const turns = await briefing.history(conversationId.trim());
+      ack?.({ ok: true, conversationId, turns });
+    });
+
+    // GO — compile thread jadi brief terstruktur (dipakai UI sebagai founder:directive).
+    socket.on('brief:compile', async (input: unknown, ack?: (r: unknown) => void) => {
+      const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
+      if (!briefing || typeof conversationId !== 'string' || conversationId.trim().length === 0) {
+        ack?.({ ok: false, error: 'conversationId required' });
+        return;
+      }
+      try {
+        const brief = await briefing.compile(conversationId.trim());
+        const parsed = parseBrief(brief);
+        if (!parsed.ok) {
+          ack?.({ ok: false, error: `brief tidak valid: ${parsed.issues}` });
+          return;
+        }
+        ack?.({ ok: true, brief: parsed.payload });
+      } catch (err) {
+        ack?.({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
     });
   });
 

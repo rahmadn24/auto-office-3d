@@ -328,8 +328,8 @@ export async function resumeAutonomous(
   };
 }
 
-/** Nama proyek untuk PRD & URL deploy, diturunkan dari prompt Founder. */
-function guessProjectName(prompt: string): string {
+/** Nama proyek untuk PRD & URL deploy, diturunkan dari prompt Founder (dipakai juga oleh Briefing Room). */
+export function guessProjectName(prompt: string): string {
   const words = prompt
     .split(/\s+/)
     .filter((w) => /^[a-zA-Z][a-zA-Z0-9'-]*$/.test(w))

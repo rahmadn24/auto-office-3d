@@ -19,6 +19,8 @@ scripts/  Tooling root (dev orchestrator).
 
 Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.ts`
 (node graph) · `brain/src/server/socket.ts` (HTTP + socket.io) ·
+`brain/src/briefing.ts` (Briefing Room: founder:chat/pm:reply, compile brief) ·
+`theater/components/briefing/BriefingRoom.tsx` (tab Briefing Room) ·
 `theater/app/layout.tsx` (BrainBridge socket sekali untuk semua tab) ·
 `theater/store/brainStore.ts` (state dari event) · `brain/src/version.ts`
 (BRAIN_VERSION — sumber tunggal, theater membacanya dari handshake `system:hello`).

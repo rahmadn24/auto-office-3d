@@ -1,10 +1,13 @@
 import {
+  briefSystemPrompt,
+  briefingSystemPrompt,
   codeSystemPrompt,
   estimateTokens,
   prdSystemPrompt,
   type LLMProvider,
   type LLMRequest,
   type LLMResult,
+  type LLMTask,
 } from './provider';
 
 export interface AnthropicLLMOptions {
@@ -28,6 +31,20 @@ function errorName(err: unknown): string {
   return typeof err === 'object' && err !== null && 'name' in err
     ? String((err as { name: unknown }).name)
     : '';
+}
+
+/** System prompt per task — PRD/codegen fase 1–7; briefing/brief Fase 8. */
+function systemFor(task: LLMTask): string {
+  switch (task) {
+    case 'prd':
+      return prdSystemPrompt();
+    case 'code':
+      return codeSystemPrompt();
+    case 'brief':
+      return briefSystemPrompt();
+    case 'briefing':
+      return briefingSystemPrompt();
+  }
 }
 
 /**
@@ -95,14 +112,17 @@ export class AnthropicLLM implements LLMProvider {
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
-    const system = request.task === 'prd' ? prdSystemPrompt() : codeSystemPrompt();
+    const system = systemFor(request.task);
     const user = [
       `Project name: ${request.context.projectName}`,
       request.context.prd ? `\nPRD:\n${request.context.prd}` : '',
       request.context.retrieved?.length
         ? `\nRetrieved memory (use if relevant):\n- ${request.context.retrieved.join('\n- ')}`
         : '',
-      `\nFounder directive:\n${request.prompt}`,
+      request.context.thread ? `\nConversation so far:\n${request.context.thread}` : '',
+      request.task === 'brief'
+        ? `\nBriefing transcript:\n${request.prompt}`
+        : `\nFounder directive:\n${request.prompt}`,
     ].join('\n');
 
     const res = await this.post({

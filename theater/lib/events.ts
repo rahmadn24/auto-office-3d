@@ -255,3 +255,50 @@ export function parseArtifacts(raw: unknown): ContractParse<ArtifactsPayload> {
   if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
   return { ok: true, payload: parsed.data };
 }
+
+/* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */
+
+export const CHAT_CHANNELS = ['briefing', 'cs_widget', 'cs_whatsapp', 'cs_email'] as const;
+export type ChatChannel = (typeof CHAT_CHANNELS)[number];
+export const CHAT_AGENT_IDS = ['pm_agent', 'cs_agent'] as const;
+export type ChatAgentId = (typeof CHAT_AGENT_IDS)[number];
+export const BRIEF_PRESETS = ['landing', 'saas-fullstack', 'custom-app'] as const;
+export type BriefPreset = (typeof BRIEF_PRESETS)[number];
+
+/** `founder:chat` → `pm:reply` — satu turn percakapan (PRD §5.3). */
+export const ChatTurnSchema = z.object({
+  conversationId: z.string().min(1),
+  channel: z.enum(CHAT_CHANNELS),
+  role: z.enum(['human', 'agent']),
+  agentId: z.enum(CHAT_AGENT_IDS).optional(),
+  message: z.string().min(1),
+  citations: z.array(z.string()).optional(),
+  timestamp: z.string().min(1),
+});
+export type ChatTurnPayload = z.infer<typeof ChatTurnSchema>;
+
+/** Hasil `brief:compile` (tombol GO) — brief terstruktur dari thread briefing. */
+export const BriefSchema = z.object({
+  conversationId: z.string().min(1),
+  projectName: z.string().min(1),
+  audience: z.string().min(1),
+  features: z.array(z.string().min(1)).min(1),
+  preset: z.enum(BRIEF_PRESETS),
+  pricing: z.string().min(1),
+  summary: z.string().min(1),
+  directive: z.string().min(1),
+  timestamp: z.string().min(1),
+});
+export type BriefPayload = z.infer<typeof BriefSchema>;
+
+export function parseChatTurn(raw: unknown): ContractParse<ChatTurnPayload> {
+  const parsed = ChatTurnSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parseBrief(raw: unknown): ContractParse<BriefPayload> {
+  const parsed = BriefSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}

@@ -59,6 +59,34 @@ describe('LanceDbMemory — driver durable default (PRD v3.0 §2.1)', () => {
     expect(sizes['qa-memory']).toBe(1);
     expect(sizes['pm-memory']).toBe(2);
   });
+
+  it('list (Fase 8 Briefing Room): kronologis per metadata.seq + filter where', async () => {
+    const mem = new LanceDbMemory(lancedbPath, new HashEmbedder());
+    await mem.upsert('briefing', [
+      {
+        id: 'chat:c1:000002',
+        text: 'balasan PM',
+        metadata: { conversationId: 'c1', role: 'agent', seq: 2 },
+      },
+      {
+        id: 'chat:c1:000001',
+        text: 'pesan founder',
+        metadata: { conversationId: 'c1', role: 'human', seq: 1 },
+      },
+      {
+        id: 'chat:c2:000001',
+        text: 'percakapan lain',
+        metadata: { conversationId: 'c2', role: 'human', seq: 1 },
+      },
+    ]);
+
+    const c1 = await mem.list('briefing', { where: { conversationId: 'c1' } });
+    expect(c1.map((r) => r.id)).toEqual(['chat:c1:000001', 'chat:c1:000002']);
+    expect(c1[0]?.metadata?.role).toBe('human');
+
+    const limited = await mem.list('briefing', { limit: 1 });
+    expect(limited).toHaveLength(1);
+  });
 });
 
 afterAll(() => {

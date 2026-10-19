@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   parseAgentStatus,
   parseArtifacts,
+  parseBrief,
+  parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
@@ -182,4 +184,52 @@ describe('kontrak artifacts:ready (paritas brain)', () => {
   });
   it('maxCycles 0 ditolak', () =>
     expect(parseArtifacts({ ...validArtifacts, maxCycles: 0 }).ok).toBe(false));
+});
+
+/* ───────── Fase 8 — founder:chat / pm:reply & brief:compile (paritas brain) ───────── */
+
+const validChatTurn = {
+  conversationId: 'conv_1',
+  channel: 'briefing' as const,
+  role: 'agent' as const,
+  agentId: 'pm_agent' as const,
+  message: 'Noted — sebelum lanjut, siapa audience utamanya?',
+  citations: ['pm-memory[seed:persona]: technical founders'],
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validBrief = {
+  conversationId: 'conv_1',
+  projectName: 'Invoice Engine',
+  audience: 'freelancers & small agencies',
+  features: ['invoice generator', 'stripe checkout'],
+  preset: 'saas-fullstack' as const,
+  pricing: '$19/mo',
+  summary: 'Brief dari diskusi Founder↔PM',
+  directive: 'Bangun Invoice Engine end-to-end.',
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak founder:chat / pm:reply — ChatTurnPayload (paritas brain)', () => {
+  it('valid diterima', () => expect(parseChatTurn(validChatTurn).ok).toBe(true));
+  it('channel di luar daftar ditolak', () =>
+    expect(parseChatTurn({ ...validChatTurn, channel: 'telegram' }).ok).toBe(false));
+  it('agentId non-chat ditolak', () =>
+    expect(parseChatTurn({ ...validChatTurn, agentId: 'dev_agent' }).ok).toBe(false));
+  it('message kosong ditolak', () =>
+    expect(parseChatTurn({ ...validChatTurn, message: '' }).ok).toBe(false));
+  it('citations opsional', () => {
+    const { citations: _c, ...rest } = validChatTurn;
+    expect(parseChatTurn(rest).ok).toBe(true);
+  });
+});
+
+describe('kontrak brief:compile — BriefPayload (paritas brain)', () => {
+  it('valid diterima', () => expect(parseBrief(validBrief).ok).toBe(true));
+  it('preset di luar enum ditolak', () =>
+    expect(parseBrief({ ...validBrief, preset: 'monolith' }).ok).toBe(false));
+  it('features kosong ditolak', () =>
+    expect(parseBrief({ ...validBrief, features: [] }).ok).toBe(false));
+  it('directive kosong ditolak', () =>
+    expect(parseBrief({ ...validBrief, directive: '' }).ok).toBe(false));
 });
