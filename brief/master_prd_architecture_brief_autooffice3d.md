@@ -251,7 +251,7 @@ Karakter agen dibangun dengan geometri modular low-poly (*box-man*), terdiri dar
 
 ### 4.4 HUD Components & Views (v3.0)
 * **Founder Command Bar (Fase 6 — selesai):** input sticky di footer semua tab; mengirim `founder:directive` + ack, riwayat 8 prompt terakhir, preset kamera `Founder` otomatis. Ruang footer dihitung via ResizeObserver (`--shell-bottom-space`) agar tidak tertimpa overlay.
-* **Briefing Room (Fase 8):** panel percakapan thread (avatar PM) untuk diskusi multi-turn; tombol **"GO — mulai run otonom"** di akhir thread. Berbagi infra percakapan dengan CS Inbox.
+* **Briefing Room (Fase 8):** floating chat PM (dock kiri-bawah di Office Theater, bisa diciutkan) untuk diskusi multi-turn; tombol **"GO — mulai run otonom"** di composer. Tidak ada tab terpisah; route lama `/briefing` redirect ke office. Berbagi infra percakapan dengan CS Inbox.
 * **Run History (Fase 7):** tab/panel riwayat run dari SQLite — bertahan setelah restart browser maupun server.
 * **CS Inbox (Fase 11):** daftar percakapan client per channel (widget/WA/email) + status lead + aksi cepat (quote, payment link, kirim kontrak).
 

@@ -1,15 +1,10 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import type { ReactNode } from 'react';
-
-import { BriefingRoom } from '@/components/briefing/BriefingRoom';
-import { AppShell } from '@/components/shell/AppShell';
-
-/** Tab "Briefing Room" (kartu 🎯 Fase 8) — diskusi Founder↔PM sebelum GO. */
-export default function BriefingPage(): ReactNode {
-  return (
-    <AppShell>
-      <BriefingRoom />
-    </AppShell>
-  );
+/**
+ * Tab "Briefing Room" sudah tidak ada — chat PM kini menyatu sebagai floating
+ * dock di Office Theater (kiri-bawah, di bawah Agent Division Sidebar).
+ * Route lama tetap hidup sebagai redirect agar deep-link/riwayat tidak 404.
+ */
+export default function BriefingPage(): never {
+  redirect('/');
 }

@@ -10,9 +10,9 @@
  *   5. Verifikasi E2E: observer socket mendengar `agent:status_update` dari Brain
  *      (directive dari UI benar-benar memulai pipeline) + UI menandai directive
  *      ter-queue (counter riwayat "↺ 1").
- *   6. Briefing Room (Fase 8): buka /briefing → chat Founder→PM dari UI →
- *      observer mendengar `pm:reply` → tombol GO mengompilasi brief dan
- *      mengirim `founder:directive` (run otonom kedua).
+ *   6. Briefing (Fase 8): floating chat PM di Office Theater → chat Founder→PM
+ *      dari UI → observer mendengar `pm:reply` → tombol GO mengompilasi brief
+ *      dan mengirim `founder:directive` (run otonom kedua).
  *   7. Payment (Fase 9): buka /terminal → tombol "Simulate Payment" →
  *      observer mendengar `milestone:first_sale` (provider stub) → banner
  *      CELEBRATE "FIRST CUSTOMER ACQUIRED" muncul di UI.
@@ -168,7 +168,8 @@ async function main() {
       console.log('✓ theater tersambung ke brain (SOCKET.IO CONNECTED)');
 
       await page.locator('input[aria-label="Tulis directive founder"]').fill(DIRECTIVE);
-      await page.locator('button[type="submit"]').click();
+      // Form spesifik: sekarang ada 2 form (chat PM + founder command bar).
+      await page.locator('form[aria-label="Founder command bar"] button[type="submit"]').click();
       console.log('» directive dikirim dari UI');
 
       const deadline = Date.now() + TIMEOUT_MS;
@@ -186,15 +187,12 @@ async function main() {
       );
       console.log('✓ directive ter-queue di founder command bar (riwayat ↺ 1)');
 
-      // ── Briefing Room (Fase 8): chat Founder→PM + GO dari UI ───────────────
-      await page.goto(`http://127.0.0.1:${THEATER_PORT}/briefing`, {
-        waitUntil: 'domcontentloaded',
+      // ── Floating PM chat (Fase 8): chat Founder→PM + GO dari UI ────────────
+      // Dock kiri-bawah di Office Theater (terbuka default); tidak ada route
+      // /briefing lagi — jadi tak perlu navigasi, cukup tunggu inputnya tampil.
+      await page.waitForSelector('input[aria-label="Tulis pesan untuk PM"]', {
+        timeout: 10_000,
       });
-      await page.waitForFunction(
-        () => document.body.innerText.includes('SOCKET.IO CONNECTED'),
-        undefined,
-        { timeout: 30_000 },
-      );
 
       const goButton = page.getByRole('button', { name: /GO — mulai run otonom/ });
       if (!(await goButton.isDisabled())) {
