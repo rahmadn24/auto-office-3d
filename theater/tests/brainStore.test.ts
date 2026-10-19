@@ -35,7 +35,8 @@ function sale(over: Partial<FirstSalePayload> = {}): FirstSalePayload {
     customer: { city: 'San Francisco', country: 'US', maskedEmail: 'a***@x.io' },
     amount: 29,
     currency: 'USD',
-    stripeEventId: 'evt_1',
+    paymentProvider: 'stub',
+    paymentEventId: 'evt_1',
     hasCustomers: true,
     timestamp: '12:00:00.000',
     ...over,
@@ -108,16 +109,31 @@ describe('brainStore: applyMilestone (idempoten)', () => {
     expect(useBrain.getState().applyMilestone(sale())).toBe(true);
     const s = useBrain.getState();
     expect(s.hasCustomers).toBe(true);
-    expect(s.milestone?.stripeEventId).toBe('evt_1');
+    expect(s.milestone?.paymentEventId).toBe('evt_1');
     expect(s.runStage).toBe('DONE');
     expect(s.feed[0]?.kind).toBe('milestone');
   });
 
-  it('stripeEventId sama tidak memicu celebration kedua', () => {
+  it('paymentEventId sama tidak memicu celebration kedua', () => {
     useBrain.getState().applyMilestone(sale());
     const dup = useBrain.getState().applyMilestone(sale());
     expect(dup).toBe(false);
     expect(useBrain.getState().feed.filter((f) => f.kind === 'milestone')).toHaveLength(1);
+  });
+
+  it('milestone IDR diformat Rp + provider (Midtrans) di feed', () => {
+    useBrain.getState().applyMilestone(
+      sale({
+        currency: 'IDR',
+        amount: 290000,
+        paymentProvider: 'midtrans',
+        paymentEventId: 'trx_1',
+      }),
+    );
+    const s = useBrain.getState();
+    expect(s.milestone?.paymentProvider).toBe('midtrans');
+    expect(s.feed[0]?.detail).toContain('Rp');
+    expect(s.feed[0]?.detail).toContain('midtrans');
   });
 });
 
@@ -201,7 +217,8 @@ const revenuePayload: RevenueUpdatePayload = {
   checkoutSessions: 2,
   grossRevenueArr: 29,
   salesCount: 1,
-  lastStripeEvent: 'checkout.session.completed · cus_1',
+  currency: 'USD',
+  lastEvent: 'checkout.session.completed · cus_1',
   signatureVerified: true,
   timestamp: '12:00:01.000',
 };
@@ -230,7 +247,7 @@ describe('brainStore: applyDeploy (pipeline deployment)', () => {
   });
 });
 
-describe('brainStore: applyRevenue (Stripe sentinel)', () => {
+describe('brainStore: applyRevenue (Payment sentinel)', () => {
   it('menyimpan metrik revenue', () => {
     useBrain.getState().applyRevenue(revenuePayload);
     const s = useBrain.getState();

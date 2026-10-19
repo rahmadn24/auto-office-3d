@@ -59,13 +59,18 @@ export interface AgentStatusPayload {
   timestamp: string;
 }
 
+/** PRD §5.2 — gateway pembayaran ternormalisasi (Fase 9: Payment Abstraction). */
+export const PAYMENT_PROVIDERS = ['stripe', 'midtrans', 'xendit', 'stub'] as const;
+export type PaymentProviderId = (typeof PAYMENT_PROVIDERS)[number];
+
 /** PRD §5.2 */
 export interface FirstSalePayload {
   runId: string;
   customer: { city: string; country: string; maskedEmail: string };
   amount: number;
-  currency: 'USD';
-  stripeEventId: string;
+  currency: 'USD' | 'IDR';
+  paymentProvider: PaymentProviderId;
+  paymentEventId: string;
   hasCustomers: true;
   timestamp: string;
 }
@@ -112,14 +117,17 @@ export interface DeployUpdatePayload {
   timestamp: string;
 }
 
-/** `revenue:update` — metrik Stripe Webhook Sentinel (PRD §3.4). */
+/** `revenue:update` — metrik Payment Sentinel (PRD §3.4). */
 export interface RevenueUpdatePayload {
   runId: string;
   activeVisitors: number;
   checkoutSessions: number;
   grossRevenueArr: number;
   salesCount: number;
-  lastStripeEvent: string;
+  /** Mata uang akumulasi `grossRevenueArr` (satu driver pembayaran per deployment). */
+  currency: 'USD' | 'IDR';
+  /** Event webhook terakhir dari provider pembayaran aktif. */
+  lastEvent: string;
   signatureVerified: boolean;
   timestamp: string;
 }
@@ -253,6 +261,13 @@ export interface BriefPayload {
 
 export function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Format nominal lintas mata uang (USD `$29.00`, IDR `Rp 290.000`). */
+export function formatMoney(amount: number, currency: string): string {
+  return currency === 'IDR'
+    ? `Rp ${Math.round(amount).toLocaleString('id-ID')}`
+    : `$${amount.toFixed(2)}`;
 }
 
 export function timestampMs(): string {

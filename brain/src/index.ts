@@ -3,9 +3,9 @@ import { loadConfig } from './config';
 import { createCheckpointer, openOfficeDb, RunStore } from './durability/store';
 import { ensureDataDir } from './durability/paths';
 import { EventBus } from './events';
-import { StripeSentinel } from './integrations';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
+import { createPayment } from './payments';
 import { runAutonomous, seedMemory } from './run';
 import { startSocketServer } from './server/socket';
 import { formatTokens } from './telemetry/tokens';
@@ -20,7 +20,7 @@ import { BRAIN_VERSION } from './version';
 async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
-  const sentinel = new StripeSentinel(config.stripeWebhookSecret);
+  const payment = createPayment(config);
 
   // Durability (PRD v3.0 §2.1): seluruh state di satu folder DATA_DIR —
   // memory LanceDB + office.db (checkpoint, run history, event log).
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   const briefing = new BriefingService({ memory, llm: createLLM(config) });
 
   const server = await startSocketServer(config, bus, {
-    sentinel,
+    payment,
     memory,
     store,
     checkpointer,
@@ -53,7 +53,12 @@ async function main(): Promise<void> {
   console.log('└──────────────────────────────────────────────────────────────┘');
   console.log(`  socket       ${server.url}`);
   console.log(`  health       http://localhost:${server.port}/health`);
-  console.log(`  webhook      http://localhost:${server.port}/webhook/stripe`);
+  console.log(`  webhook      http://localhost:${server.port}/webhook/${payment.id}`);
+  if (payment.id === 'stub') {
+    console.log(
+      `  demo pay     http://localhost:${server.port}/demo/checkout?order_id=… (driver stub)`,
+    );
+  }
   console.log(
     `  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver} deploy=${config.deployDriver} social=${config.socialDriver}`,
   );
@@ -74,7 +79,7 @@ async function main(): Promise<void> {
     const { state, tokensUsed } = await runAutonomous(prompt, {
       config,
       emit: bus,
-      sentinel,
+      payment,
       memory,
       store,
       checkpointer,

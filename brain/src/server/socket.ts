@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http';
+import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https';
 
@@ -12,7 +12,7 @@ import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
 import type { RunStore } from '../durability/store';
 import { EventBus } from '../events';
-import { StripeSentinel, signStripePayload } from '../integrations';
+import { createPayment, type PaymentProvider } from '../payments';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import type {
   AgentStatusPayload,
@@ -26,6 +26,7 @@ import type {
 } from '../types';
 import type { MemoryProvider } from '../memory/provider';
 import { BRAIN_VERSION } from '../version';
+import { createHttpHandler } from './http';
 import {
   parseAgentStatus,
   parseArtifacts,
@@ -48,8 +49,8 @@ export interface BrainServer {
 }
 
 export interface SocketServerOptions {
-  /** Sentinel Stripe bersama (idempoten lintas webhook & run otonom). */
-  sentinel?: StripeSentinel;
+  /** Driver pembayaran aktif (Payment Sentinel multi-provider, PRD §3.4). */
+  payment?: PaymentProvider;
   /** Vector memory — untuk menyertakan jumlah vektor per namespace di snapshot. */
   memory?: MemoryProvider;
   /** Run history + event log durable (PRD v3.0 §4.4). */
@@ -60,20 +61,13 @@ export interface SocketServerOptions {
   briefing?: BriefingService;
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
-    let data = '';
-    req.on('data', (chunk: Buffer) => (data += chunk.toString('utf8')));
-    req.on('end', () => resolve(data));
-  });
-}
-
 /**
  * Realtime protocol — PRD §2.1 (WebSockets + polling fallback, WSS di produksi)
  * dan PRD §5 (skema event agent:status_update / milestone:first_sale).
  *
  * Endpoint: ws://localhost:4800/brain-server
  * Loop Controls: event `control:halt`/`control:resume` + HTTP POST /control/halt
+ * HTTP surface (health/control/webhook) dipecah ke `server/http.ts` (Fase 9).
  */
 export async function startSocketServer(
   config: Config,
@@ -82,7 +76,7 @@ export async function startSocketServer(
 ): Promise<BrainServer> {
   const control = createControl();
   const controlTelemetry = { tokensUsed: 0, latencyMs: 0, model: config.llmDriver };
-  const sentinel = opts.sentinel ?? new StripeSentinel(config.stripeWebhookSecret);
+  const payment = opts.payment ?? createPayment(config);
 
   // Status terakhir tiap agen + milestone + integrasi — dipakai snapshot saat (re)connect.
   const latestByAgent = new Map<string, AgentStatusPayload>();
@@ -96,75 +90,19 @@ export async function startSocketServer(
   const store = opts.store;
   const briefing = opts.briefing;
 
-  // Setelah webhook Stripe diterima → siarkan revenue metrics yang sudah diperbarui.
+  // Metrik revenue yang sudah diperbarui disiarkan setelah webhook/simulasi (PRD §3.4).
   function broadcastRevenue(runId: string): void {
-    const metrics = sentinel.metrics();
-    bus.revenue({ ...metrics, runId, timestamp: new Date().toISOString() });
+    bus.revenue({ ...payment.metrics(), runId, timestamp: new Date().toISOString() });
   }
 
-  const handler = (req: IncomingMessage, res: ServerResponse): void => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({ ok: true, service: 'autooffice3d-brain', control: control.snapshot() }),
-      );
-      return;
-    }
-    if (req.method === 'POST' && (req.url === '/control/halt' || req.url === '/control/resume')) {
-      void readBody(req).then((body) => {
-        let runId: string | undefined;
-        try {
-          const parsed: unknown = body ? JSON.parse(body) : {};
-          if (parsed && typeof parsed === 'object' && 'runId' in parsed) {
-            const value = (parsed as { runId?: unknown }).runId;
-            if (typeof value === 'string') runId = value;
-          }
-        } catch {
-          runId = undefined;
-        }
-        if (req.url === '/control/halt') control.halt(runId);
-        else control.resume(runId);
-        io.emit('control:state', control.snapshot());
-        bus.agent(
-          EventBus.payload({
-            runId: 'control',
-            agentId: 'founder_agent',
-            action: 'idle',
-            zone: 'central_bus',
-            logMessage: `LOOP CONTROLS · ${req.url === '/control/halt' ? 'HALT' : 'RESUME'} ${runId ?? 'ALL'} via HTTP`,
-            telemetry: controlTelemetry,
-          }),
-        );
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, control: control.snapshot() }));
-      });
-      return;
-    }
-    if (req.method === 'POST' && req.url === '/webhook/stripe') {
-      // Stripe Webhook Sentinel (PRD §3.4) — verifikasi signature HMAC SHA-256
-      // lalu terjemahkan transaksi pertama jadi milestone:first_sale + revenue.
-      void readBody(req).then((body) => {
-        const sig = (req.headers['stripe-signature'] as string | undefined) ?? '';
-        const sale = sentinel.receive(body, sig, 'webhook');
-        if (sale) bus.milestone(sale);
-        broadcastRevenue(sale?.runId ?? 'webhook');
-        res.writeHead(sentinel.lastSignatureVerified || !config.stripeWebhookSecret ? 200 : 401, {
-          'content-type': 'application/json',
-        });
-        res.end(
-          JSON.stringify({
-            ok: true,
-            received: true,
-            signatureVerified: sentinel.lastSignatureVerified,
-            firstSale: Boolean(sale),
-            metrics: sentinel.metrics(),
-          }),
-        );
-      });
-      return;
-    }
-    res.writeHead(404).end();
-  };
+  // HTTP surface (health/control/webhook/demo) — hasil pemecahan Fase 9 ke server/http.ts.
+  const handler = createHttpHandler({
+    bus,
+    control,
+    payment,
+    controlTelemetry,
+    getIo: () => io,
+  });
 
   // WSS: sertifikat TLS disediakan lewat env (BRAIN_TLS_CERT / BRAIN_TLS_KEY) —
   // tanpa sertifikat server tetap jalan ws:// (dev lokal), dengan sertifikat → wss://.
@@ -263,7 +201,7 @@ export async function startSocketServer(
         github: config.githubToken ? 'github' : 'local',
         email: config.emailDriver,
         social: config.socialDriver,
-        stripe: config.stripeWebhookSecret ? 'webhook' : 'simulate',
+        payment: config.paymentDriver,
       },
       limits: {
         maxIterations: config.maxIterations,
@@ -301,39 +239,32 @@ export async function startSocketServer(
       ack?.({ ok: true, snapshot });
     });
 
-    // SIMULATE WEBHOOK (kartu 💳) — demo transaksi $29 tanpa Stripe nyata.
-    socket.on('stripe:simulate', (input: unknown, ack?: (r: unknown) => void) => {
+    // SIMULATE PAYMENT (kartu 💳) — demo transaksi $29 tanpa akun gateway.
+    // Driver aktif yang menentukan format event (stripe/midtrans/stub).
+    socket.on('payment:simulate', (input: unknown, ack?: (r: unknown) => void) => {
       const runId =
         (input as { runId?: unknown } | undefined)?.runId &&
         typeof (input as { runId?: unknown }).runId === 'string'
           ? (input as { runId: string }).runId
           : 'simulated_run';
-      const event = {
-        id: `evt_sim_${Date.now().toString(36)}`,
-        type: 'checkout.session.completed',
-        created: Math.floor(Date.now() / 1000),
-        data: {
-          object: {
-            amount_total: 2900,
-            currency: 'usd',
-            customer: `cus_sim_${Math.floor(Math.random() * 1e6)}`,
-            customer_details: {
-              email: 'demo.buyer@founderscaled.io',
-              address: { city: 'San Francisco', country: 'US' },
-            },
-          },
-        },
-      };
-      const rawBody = JSON.stringify(event);
-      const sig = signStripePayload(rawBody, config.stripeWebhookSecret ?? 'whsec_offline');
-      const sale = sentinel.receive(rawBody, sig, runId);
-      if (sale) bus.milestone(sale);
+      if (!payment.simulateSale) {
+        ack?.({
+          ok: false,
+          provider: payment.id,
+          error: `driver ${payment.id} tidak mendukung simulasi`,
+        });
+        return;
+      }
+      const outcome = payment.simulateSale(runId);
+      if (outcome.sale) bus.milestone(outcome.sale);
       broadcastRevenue(runId);
       ack?.({
-        ok: true,
-        signatureVerified: sentinel.lastSignatureVerified,
-        firstSale: Boolean(sale),
-        metrics: sentinel.metrics(),
+        ok: outcome.accepted,
+        provider: payment.id,
+        status: outcome.status,
+        signatureVerified: outcome.signatureVerified,
+        firstSale: Boolean(outcome.sale),
+        metrics: payment.metrics(),
       });
     });
 

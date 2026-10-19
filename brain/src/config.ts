@@ -35,6 +35,11 @@ const EnvSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   VERCEL_TOKEN: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  PAYMENT_DRIVER: z.enum(['auto', 'stub', 'stripe', 'midtrans', 'xendit']).default('auto'),
+  MIDTRANS_SERVER_KEY: z.string().optional(),
+  MIDTRANS_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
+  XENDIT_SECRET_KEY: z.string().optional(),
   EMAIL_DRIVER: z.enum(['auto', 'stub', 'resend']).default('auto'),
   RESEND_API_KEY: z.string().optional(),
   SOCIAL_DRIVER: z.enum(['auto', 'stub', 'live']).default('auto'),
@@ -70,6 +75,11 @@ export interface Config {
   githubToken?: string;
   vercelToken?: string;
   stripeWebhookSecret?: string;
+  stripeSecretKey?: string;
+  paymentDriver: 'stub' | 'stripe' | 'midtrans' | 'xendit';
+  midtransServerKey?: string;
+  midtransEnv: 'sandbox' | 'production';
+  xenditSecretKey?: string;
   emailDriver: 'stub' | 'resend';
   resendApiKey?: string;
   socialDriver: 'stub' | 'live';
@@ -106,6 +116,16 @@ export function loadConfig(
     e.SANDBOX_DRIVER === 'auto' ? (e.E2B_API_KEY ? 'e2b' : 'local') : e.SANDBOX_DRIVER;
   const deployDriver =
     e.DEPLOY_DRIVER === 'auto' ? (e.VERCEL_TOKEN ? 'vercel' : 'local') : e.DEPLOY_DRIVER;
+  // Payment Sentinel multi-provider (PRD §3.4 Fase 9): auto → gateway live
+  // sesuai kredensial; default aman = driver `stub` (demo lokal tanpa akun).
+  const paymentDriver =
+    e.PAYMENT_DRIVER === 'auto'
+      ? e.MIDTRANS_SERVER_KEY
+        ? 'midtrans'
+        : e.STRIPE_WEBHOOK_SECRET
+          ? 'stripe'
+          : 'stub'
+      : e.PAYMENT_DRIVER;
   const emailDriver =
     e.EMAIL_DRIVER === 'auto' ? (e.RESEND_API_KEY ? 'resend' : 'stub') : e.EMAIL_DRIVER;
   // Threads belum diimplementasikan (integrations/social.ts) — jangan flip ke
@@ -130,6 +150,15 @@ export function loadConfig(
   }
   if (emailDriver === 'resend' && !e.RESEND_API_KEY) {
     problems.push('EMAIL_DRIVER=resend butuh RESEND_API_KEY');
+  }
+  if (paymentDriver === 'stripe' && !e.STRIPE_WEBHOOK_SECRET) {
+    problems.push('PAYMENT_DRIVER=stripe butuh STRIPE_WEBHOOK_SECRET');
+  }
+  if (paymentDriver === 'midtrans' && !e.MIDTRANS_SERVER_KEY) {
+    problems.push('PAYMENT_DRIVER=midtrans butuh MIDTRANS_SERVER_KEY');
+  }
+  if (paymentDriver === 'xendit' && !e.XENDIT_SECRET_KEY) {
+    problems.push('PAYMENT_DRIVER=xendit butuh XENDIT_SECRET_KEY');
   }
   if (socialDriver === 'live' && !e.X_BEARER_TOKEN) {
     problems.push('SOCIAL_DRIVER=live butuh X_BEARER_TOKEN (integrasi Threads belum tersedia)');
@@ -159,6 +188,11 @@ export function loadConfig(
     githubToken: e.GITHUB_TOKEN,
     vercelToken: e.VERCEL_TOKEN,
     stripeWebhookSecret: e.STRIPE_WEBHOOK_SECRET,
+    stripeSecretKey: e.STRIPE_SECRET_KEY,
+    paymentDriver,
+    midtransServerKey: e.MIDTRANS_SERVER_KEY,
+    midtransEnv: e.MIDTRANS_ENV,
+    xenditSecretKey: e.XENDIT_SECRET_KEY,
     emailDriver,
     resendApiKey: e.RESEND_API_KEY,
     socialDriver,

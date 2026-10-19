@@ -5,7 +5,13 @@ import { io as connectClient, type Socket as ClientSocket } from 'socket.io-clie
 
 import { loadConfig } from '../src/config';
 import { EventBus } from '../src/events';
-import { StripeSentinel, signStripePayload } from '../src/integrations';
+import {
+  StripeSentinel,
+  StubSentinel,
+  XenditSentinel,
+  signMidtransNotification,
+  signStripePayload,
+} from '../src/payments';
 import { startSocketServer, type BrainServer } from '../src/server/socket';
 import type { FirstSalePayload, RevenueUpdatePayload } from '../src/types';
 
@@ -81,9 +87,15 @@ describe('Stripe Webhook Sentinel endpoint (PRD §3.4)', () => {
     const bus = new EventBus();
     const secret = 'whsec_http';
     const srv = await startSocketServer(
-      { ...loadConfig(), port: 0, socketPath: '/brain-hook', stripeWebhookSecret: secret },
+      {
+        ...loadConfig(),
+        port: 0,
+        socketPath: '/brain-hook',
+        paymentDriver: 'stripe',
+        stripeWebhookSecret: secret,
+      },
       bus,
-      { sentinel: new StripeSentinel(secret) },
+      { payment: new StripeSentinel(secret) },
     );
     const addr = srv.httpServer.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
@@ -133,9 +145,15 @@ describe('Stripe Webhook Sentinel endpoint (PRD §3.4)', () => {
     const bus = new EventBus();
     const secret = 'whsec_http_bad';
     const srv = await startSocketServer(
-      { ...loadConfig(), port: 0, socketPath: '/brain-hook', stripeWebhookSecret: secret },
+      {
+        ...loadConfig(),
+        port: 0,
+        socketPath: '/brain-hook',
+        paymentDriver: 'stripe',
+        stripeWebhookSecret: secret,
+      },
       bus,
-      { sentinel: new StripeSentinel(secret) },
+      { payment: new StripeSentinel(secret) },
     );
     const addr = srv.httpServer.address() as AddressInfo;
     const url = `http://127.0.0.1:${addr.port}`;
@@ -174,7 +192,7 @@ describe('SIMULATE WEBHOOK via socket (kartu 💳)', () => {
     });
   }
 
-  it('stripe:simulate memancarkan milestone:first_sale + revenue:update ke klien', async () => {
+  it('payment:simulate memancarkan milestone:first_sale + revenue:update ke klien', async () => {
     client = await connect('/brain-test');
 
     const sale = new Promise<FirstSalePayload>((resolve) =>
@@ -184,15 +202,19 @@ describe('SIMULATE WEBHOOK via socket (kartu 💳)', () => {
       client.once('revenue:update', resolve),
     );
 
-    const ack = await new Promise<{ ok: boolean; firstSale: boolean }>((resolve) => {
-      client.emit('stripe:simulate', { runId: 'run_sim' }, resolve);
-    });
+    const ack = await new Promise<{ ok: boolean; firstSale: boolean; provider: string }>(
+      (resolve) => {
+        client.emit('payment:simulate', { runId: 'run_sim' }, resolve);
+      },
+    );
     expect(ack.ok).toBe(true);
     expect(ack.firstSale).toBe(true);
+    expect(ack.provider).toBe('stub');
 
     const salePayload = await sale;
     expect(salePayload.amount).toBe(29);
     expect(salePayload.hasCustomers).toBe(true);
+    expect(salePayload.paymentProvider).toBe('stub');
 
     const rev = await revenue;
     expect(rev.salesCount).toBeGreaterThanOrEqual(1);
@@ -255,6 +277,157 @@ describe('Broadcast deploy:update & social:post (Fase 4)', () => {
     expect((await deploy).status).toBe('ready');
     expect((await social).platform).toBe('x');
     client.close();
+    await srv.close();
+  });
+});
+
+/* ───────── Fase 9 — Payment Abstraction: HTTP stub & midtrans ───────── */
+
+describe('Stub payment driver — demo checkout lokal (Fase 9)', () => {
+  it('create link → GET /demo/checkout → POST /demo/pay → milestone + revenue', async () => {
+    const bus = new EventBus();
+    const stub = new StubSentinel({ demoBaseUrl: 'http://localhost:0' });
+    const srv = await startSocketServer(
+      { ...loadConfig(), port: 0, socketPath: '/brain-demo' },
+      bus,
+      { payment: stub },
+    );
+    const addr = srv.httpServer.address() as AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+
+    const milestones: FirstSalePayload[] = [];
+    bus.onMilestone((p) => milestones.push(p));
+    const revenue = new Promise<RevenueUpdatePayload>((resolve) => bus.onRevenue(resolve));
+
+    const link = await stub.createPaymentLink({
+      leadId: 'lead_http',
+      amount: 290000,
+      currency: 'IDR',
+    });
+    const orderId = new URL(link.checkoutUrl).searchParams.get('order_id') ?? '';
+    expect(orderId).not.toBe('');
+
+    const page = await fetch(`${url}/demo/checkout?order_id=${encodeURIComponent(orderId)}`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('Demo Checkout');
+
+    const pay = await fetch(`${url}/demo/pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `order_id=${encodeURIComponent(orderId)}`,
+    });
+    expect(pay.status).toBe(200);
+    const html = await pay.text();
+    expect(html).toContain('FIRST CUSTOMER ACQUIRED');
+
+    expect(milestones).toHaveLength(1);
+    expect(milestones[0]?.paymentProvider).toBe('stub');
+    expect(milestones[0]?.amount).toBe(290000);
+    expect(milestones[0]?.currency).toBe('IDR');
+
+    const rev = await revenue;
+    expect(rev.salesCount).toBe(1);
+
+    // Health endpoint menyertakan status payment sentinel aktif.
+    const health = (await (await fetch(`${url}/health`)).json()) as {
+      payment: { provider: string; salesCount: number };
+    };
+    expect(health.payment.provider).toBe('stub');
+    expect(health.payment.salesCount).toBe(1);
+
+    await srv.close();
+  });
+
+  it('order tak dikenal → 404 pada /demo/checkout', async () => {
+    const srv = await startSocketServer(
+      { ...loadConfig(), port: 0, socketPath: '/brain-demo2' },
+      new EventBus(),
+    );
+    const addr = srv.httpServer.address() as AddressInfo;
+    const res = await fetch(`http://127.0.0.1:${addr.port}/demo/checkout?order_id=nope`);
+    expect(res.status).toBe(404);
+    await srv.close();
+  });
+});
+
+describe('Midtrans webhook HTTP (Fase 9)', () => {
+  it('notifikasi signed → 200 + milestone IDR; signature salah → 401', async () => {
+    const bus = new EventBus();
+    const key = 'SB-Mid-server-http';
+    const srv = await startSocketServer(
+      {
+        ...loadConfig(),
+        port: 0,
+        socketPath: '/brain-mdt',
+        paymentDriver: 'midtrans',
+        midtransServerKey: key,
+      },
+      bus,
+    );
+    const addr = srv.httpServer.address() as AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+
+    const milestones: FirstSalePayload[] = [];
+    bus.onMilestone((p) => milestones.push(p));
+
+    const notif = {
+      order_id: 'order_http',
+      status_code: '200',
+      gross_amount: '29000.00',
+      transaction_status: 'settlement',
+      transaction_id: 'trx_http',
+      currency: 'IDR',
+    };
+    const raw = JSON.stringify({
+      ...notif,
+      signature_key: signMidtransNotification(notif, key),
+    });
+    const res = await fetch(`${url}/webhook/midtrans`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: raw,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { firstSale: boolean; provider: string; status: string };
+    expect(body.firstSale).toBe(true);
+    expect(body.provider).toBe('midtrans');
+    expect(body.status).toBe('settlement');
+    expect(milestones).toHaveLength(1);
+    expect(milestones[0]?.currency).toBe('IDR');
+    expect(milestones[0]?.paymentProvider).toBe('midtrans');
+
+    const forged = await fetch(`${url}/webhook/midtrans`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...notif, order_id: 'order_forged', signature_key: 'deadbeef' }),
+    });
+    expect(forged.status).toBe(401);
+    const forgedBody = (await forged.json()) as { firstSale: boolean };
+    expect(forgedBody.firstSale).toBe(false);
+    expect(milestones).toHaveLength(1);
+
+    await srv.close();
+  });
+
+  it('driver xendit belum diimplementasikan → /webhook/xendit 501', async () => {
+    const srv = await startSocketServer(
+      {
+        ...loadConfig(),
+        port: 0,
+        socketPath: '/brain-xnd',
+        paymentDriver: 'xendit',
+        xenditSecretKey: 'xnd_test',
+      },
+      new EventBus(),
+      { payment: new XenditSentinel('xnd_test') },
+    );
+    const addr = srv.httpServer.address() as AddressInfo;
+    const res = await fetch(`http://127.0.0.1:${addr.port}/webhook/xendit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(501);
     await srv.close();
   });
 });

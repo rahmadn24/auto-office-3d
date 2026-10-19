@@ -7,9 +7,9 @@ import type {
   GitHubDriver,
   HealthProbe,
   SocialDriver,
-  StripeSentinel,
 } from '../integrations';
-import { composeLaunchThread, signStripePayload } from '../integrations';
+import { composeLaunchThread } from '../integrations';
+import type { PaymentProvider } from '../payments';
 import { parseFileBundle, type LLMProvider } from '../llm/provider';
 import type { MemoryProvider } from '../memory/provider';
 import type { SandboxDriver } from '../sandbox/types';
@@ -18,6 +18,7 @@ import { slugify } from '../slug';
 import type { TokenBudget } from '../telemetry/tokens';
 import {
   AGENT_HOME_ZONE,
+  formatMoney,
   timestampMs,
   type AgentId,
   type CurrentAction,
@@ -42,7 +43,8 @@ export interface GraphDeps {
   healthProbe?: HealthProbe;
   social?: SocialDriver;
   email?: EmailDriver;
-  sentinel?: StripeSentinel;
+  /** Payment Sentinel multi-provider (stripe/midtrans/stub) — PRD §3.4 Fase 9. */
+  payment?: PaymentProvider;
 }
 
 interface EmitOpts {
@@ -536,12 +538,12 @@ export function growthNode(deps: GraphDeps) {
       state.runId,
       'marketing_agent',
       'marketing',
-      `${socialSummary} · listening for Stripe webhook`,
+      `${socialSummary} · listening for payment webhook`,
       { zone: 'marketing_studio' },
     );
 
-    // 2) Stripe Webhook Sentinel (PRD §3.4) — transaksi pertama $29.00 ARR.
-    // Simulasi event checkout.session.completed (ber-signature) → sentinel.
+    // 2) Payment Sentinel (PRD §3.4) — transaksi pertama (stub demo: $29.00 ARR;
+    // gateway nyata: webhook live). Driver aktif yang menentukan format event.
     const sale = receiveSimulatedSale(deps, state);
     if (sale) {
       emitStatus(
@@ -549,7 +551,7 @@ export function growthNode(deps: GraphDeps) {
         state.runId,
         'marketing_agent',
         'celebrating',
-        `FIRST CUSTOMER ACQUIRED ($${sale.amount.toFixed(2)} ARR) → hasCustomers = true · CELEBRATE broadcast`,
+        `FIRST CUSTOMER ACQUIRED (${formatMoney(sale.amount, sale.currency)} ARR · via ${sale.paymentProvider}) → hasCustomers = true · CELEBRATE broadcast`,
         { zone: 'central_bus' },
       );
 
@@ -558,7 +560,7 @@ export function growthNode(deps: GraphDeps) {
         const sent = await deps.email.send({
           to: sale.customer.maskedEmail,
           subject: `Welcome to ${state.projectName} 🎉`,
-          body: `Thanks for your first purchase ($${sale.amount.toFixed(2)} ${sale.currency}). Your product is live at ${state.liveUrl}.`,
+          body: `Thanks for your first purchase (${formatMoney(sale.amount, sale.currency)}). Your product is live at ${state.liveUrl}.`,
         });
         if (sent.sent) {
           emitStatus(
@@ -574,8 +576,8 @@ export function growthNode(deps: GraphDeps) {
     }
 
     // 4) Revenue metrics → panel Sales & Webhook Sentinel.
-    if (deps.sentinel) {
-      const metrics = deps.sentinel.metrics();
+    if (deps.payment) {
+      const metrics = deps.payment.metrics();
       deps.emit.revenue?.({
         ...metrics,
         runId: state.runId,
@@ -597,41 +599,29 @@ export function growthNode(deps: GraphDeps) {
   };
 }
 
-/** Membangun event Stripe simulasi, menandatangani, lalu menyerahkannya ke sentinel. */
+/**
+ * Picu transaksi pertama lewat driver Payment Sentinel aktif (PRD §3.4 Fase 9):
+ * driver stripe/midtrans/stub membangun event demo tervalidasi + signature-nya;
+ * tanpa provider (test lama), milestone fallback $29 tetap naik.
+ * `eventId` deterministik `evt_<runId>` → resume run tidak memicu sale ganda.
+ */
 function receiveSimulatedSale(deps: GraphDeps, state: RunState): FirstSalePayload | null {
-  const event = {
-    id: `evt_${state.runId}`,
-    type: 'checkout.session.completed',
-    created: Math.floor(Date.now() / 1000),
-    data: {
-      object: {
-        amount_total: 2900,
-        currency: 'usd',
-        customer: 'cus_first_founder',
-        customer_details: {
-          email: 'buyer@founderscaled.io',
-          address: { city: 'San Francisco', country: 'US' },
-        },
-      },
-    },
-  };
-  const rawBody = JSON.stringify(event);
-  if (!deps.sentinel) {
-    // Tanpa sentinel, pertahankan perilaku simulasi lama (milestone tetap naik).
+  if (!deps.payment) {
     const fallback: FirstSalePayload = {
       runId: state.runId,
       customer: { city: 'San Francisco', country: 'US', maskedEmail: 'b***@founderscaled.io' },
       amount: 29,
       currency: 'USD',
-      stripeEventId: event.id,
+      paymentProvider: 'stub',
+      paymentEventId: `evt_${state.runId}`,
       hasCustomers: true,
       timestamp: new Date().toISOString(),
     };
     deps.emit.milestone(fallback);
     return fallback;
   }
-  const sig = signStripePayload(rawBody, deps.sentinel.webhookSecret ?? 'whsec_offline');
-  const sale = deps.sentinel.receive(rawBody, sig, state.runId);
+  const outcome = deps.payment.simulateSale?.(state.runId, `evt_${state.runId}`);
+  const sale = outcome?.sale ?? null;
   if (sale) deps.emit.milestone(sale);
   return sale;
 }

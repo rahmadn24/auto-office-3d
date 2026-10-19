@@ -12,11 +12,11 @@ import {
   createGitHub,
   createHealthProbe,
   createSocial,
-  StripeSentinel,
 } from './integrations';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
 import type { MemoryProvider } from './memory/provider';
+import { createPayment, type PaymentProvider } from './payments';
 import { createSandbox } from './sandbox';
 import { TokenBudget } from './telemetry/tokens';
 import type { Config } from './config';
@@ -110,8 +110,8 @@ export interface RunOptions {
   seed?: boolean;
   /** Endpoint HALT GRAPH — bila tidak diberikan, dibuat internal (tidak pernah halt). */
   control?: RunControl;
-  /** Sentinel Stripe bersama (idempoten lintas webhook & run). */
-  sentinel?: StripeSentinel;
+  /** Payment Sentinel bersama (idempoten lintas webhook & run) — PRD §3.4. */
+  payment?: PaymentProvider;
   /** Vector memory bersama (dibuat di index) — bila diberikan, tidak dibuat/di-seed ulang. */
   memory?: MemoryProvider;
   /** Simpan checkpoint tiap langkah agar run bisa di-resume. */
@@ -136,7 +136,7 @@ function buildDeps(
   budget: TokenBudget,
   control: RunControl,
   memory: MemoryProvider,
-  sentinel: StripeSentinel,
+  payment: PaymentProvider,
 ): GraphDeps {
   return {
     llm: createLLM(config),
@@ -150,7 +150,7 @@ function buildDeps(
     healthProbe: createHealthProbe(config),
     social: createSocial(config),
     email: createEmail(config),
-    sentinel,
+    payment,
   };
 }
 
@@ -187,7 +187,7 @@ export async function runAutonomous(
     budget,
     control,
     memory,
-    options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
+    options.payment ?? createPayment(config),
   );
 
   const runId = options.runId ?? `run_${Date.now().toString(36)}`;
@@ -280,7 +280,7 @@ export async function resumeAutonomous(
     budget,
     control,
     memory,
-    options.sentinel ?? new StripeSentinel(config.stripeWebhookSecret),
+    options.payment ?? createPayment(config),
   );
   const checkpointer = options.checkpointer ?? new MemorySaver();
   const app = buildOrchestrator(deps, { checkpointer });

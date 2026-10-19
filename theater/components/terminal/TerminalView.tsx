@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { simulateWebhook } from '@/lib/brainSocket';
+import { formatMoney } from '@/lib/format';
 import { GLASS } from '@/lib/ui';
 import { StatusChip } from '@/components/ui/StatusChip';
 import { useBrain } from '@/store/brainStore';
@@ -274,29 +275,35 @@ function SalesPanel(): ReactNode {
   const hasCustomers = useBrain((s) => s.hasCustomers);
   const milestone = useBrain((s) => s.milestone);
   return (
-    <Panel title="Sales & Webhook Sentinel" accent="#ec4899">
+    <Panel title="Sales & Payment Sentinel" accent="#ec4899">
       {hasCustomers ? (
         <div className="mb-2 rounded border border-[rgba(78,222,163,0.4)] bg-[rgba(78,222,163,0.08)] px-2 py-1.5 font-mono text-[11px] text-[#4edea3]">
           FIRST CUSTOMER ACQUIRED
-          {milestone ? ` · $${milestone.amount.toFixed(2)} ${milestone.currency}` : ''}
+          {milestone
+            ? ` · ${formatMoney(milestone.amount, milestone.currency)} · ${milestone.paymentProvider}`
+            : ''}
         </div>
       ) : null}
       <Row k="Active Visitors" v={revenue?.activeVisitors ?? 0} />
       <Row k="Checkout Sessions" v={revenue?.checkoutSessions ?? 0} />
-      <Row k="Gross ARR" v={`$${(revenue?.grossRevenueArr ?? 0).toFixed(2)}`} tone="#ec4899" />
+      <Row
+        k="Gross ARR"
+        v={formatMoney(revenue?.grossRevenueArr ?? 0, revenue?.currency ?? 'USD')}
+        tone="#ec4899"
+      />
       <Row k="Sales" v={revenue?.salesCount ?? 0} />
       <Row
         k="Signature"
-        v={revenue?.signatureVerified ? 'WHA-SHA256 OK' : 'UNVERIFIED'}
+        v={revenue?.signatureVerified ? 'SIGNATURE OK' : 'UNVERIFIED'}
         tone={revenue?.signatureVerified ? '#4edea3' : '#f59e0b'}
       />
-      <Row k="Last Event" v={revenue?.lastStripeEvent || '—'} />
+      <Row k="Last Event" v={revenue?.lastEvent || '—'} />
       <button
         type="button"
         onClick={() => simulateWebhook()}
         className="mt-2 w-full rounded border border-[rgba(236,72,153,0.5)] bg-[rgba(236,72,153,0.1)] px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-[#ec4899] transition-colors hover:bg-[rgba(236,72,153,0.2)]"
       >
-        Simulate Webhook ($29.00 ARR)
+        Simulate Payment (driver aktif)
       </button>
     </Panel>
   );

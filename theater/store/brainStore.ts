@@ -11,6 +11,9 @@ import type {
   SocialPostPayload,
 } from '@/lib/events';
 import type { ZoneKey } from '@/lib/zones';
+// Import runtime wajib relatif: vitest theater tidak me-resolve alias '@/*'
+// (import type '@/...' aman karena dihapus saat transform).
+import { formatMoney } from '../lib/format';
 
 /** Koneksi ke Brain (Socket.io) — PRD §2.1. */
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
@@ -142,7 +145,7 @@ interface BrainStore {
   feed: FeedItem[];
   hasCustomers: boolean;
   milestone: FirstSalePayload | null;
-  /** stripeEventId yang sudah diproses — idempoten (PRD §5.2). */
+  /** paymentEventId yang sudah diproses — idempoten (PRD §5.2). */
   seenSaleIds: Set<string>;
   /** Epoch ms event terakhir — untuk deteksi stale & events/sec. */
   lastEventAt: number | null;
@@ -170,7 +173,7 @@ interface BrainStore {
   setBrainVersion(v: string): void;
   /** Terapkan payload status: validasi, diff update agent, dorong feed. */
   applyStatus(payload: AgentStatusPayload): boolean;
-  /** Terapkan milestone first sale — idempoten per stripeEventId. */
+  /** Terapkan milestone first sale — idempoten per paymentEventId. */
   applyMilestone(payload: FirstSalePayload): boolean;
   /** Terapkan update pipeline deployment (GitHub → Vercel → Health). */
   applyDeploy(payload: DeployUpdatePayload): void;
@@ -305,9 +308,9 @@ export const useBrain = create<BrainStore>((set, get) => ({
 
   applyMilestone: (payload) => {
     const s = get();
-    if (s.seenSaleIds.has(payload.stripeEventId)) return false;
+    if (s.seenSaleIds.has(payload.paymentEventId)) return false;
     const seen = new Set(s.seenSaleIds);
-    seen.add(payload.stripeEventId);
+    seen.add(payload.paymentEventId);
     const at = parseBrainTimestamp(payload.timestamp);
     const item: FeedItem = {
       id: nextFeedId(),
@@ -315,7 +318,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
       division: 'Growth',
       action: 'milestone:first_sale',
       targetZone: 'central_bus',
-      detail: `${payload.customer.city}, ${payload.customer.country} · $${payload.amount.toFixed(2)} ${payload.currency} · ${payload.customer.maskedEmail}`,
+      detail: `${payload.customer.city}, ${payload.customer.country} · ${formatMoney(payload.amount, payload.currency)} · ${payload.paymentProvider} · ${payload.customer.maskedEmail}`,
       at: Date.now(),
       tsLabel: payload.timestamp,
       runId: payload.runId,
@@ -462,8 +465,8 @@ export const useBrain = create<BrainStore>((set, get) => ({
     const seen = new Set(s.seenSaleIds);
     const feed = [...s.feed];
     for (const m of milestones ?? []) {
-      if (seen.has(m.stripeEventId)) continue;
-      seen.add(m.stripeEventId);
+      if (seen.has(m.paymentEventId)) continue;
+      seen.add(m.paymentEventId);
       hasCustomers = true;
       milestone = m;
       feed.push({
@@ -472,7 +475,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
         division: 'Growth',
         action: 'milestone:first_sale',
         targetZone: 'central_bus',
-        detail: `${m.customer.city} · $${m.amount.toFixed(2)}`,
+        detail: `${m.customer.city} · ${formatMoney(m.amount, m.currency)} · ${m.paymentProvider}`,
         at: Date.now(),
         tsLabel: m.timestamp,
         runId: m.runId,

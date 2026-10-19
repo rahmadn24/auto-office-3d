@@ -2,7 +2,7 @@ import { loadConfig } from './config';
 import { EventBus } from './events';
 import { runAutonomous } from './run';
 import { formatTokens } from './telemetry/tokens';
-import { timestampMs } from './types';
+import { formatMoney, timestampMs } from './types';
 
 /**
  * CLI demo tanpa server: memutar satu run otonom lengkap dan mencetak
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   });
   bus.onMilestone((p) => {
     console.log(
-      `\n  ✦ MILESTONE:first_sale  $${p.amount.toFixed(2)} ${p.currency} · ${p.customer.city}, ${p.customer.country} · ${p.customer.maskedEmail}`,
+      `\n  ✦ MILESTONE:first_sale  ${formatMoney(p.amount, p.currency)} (${p.paymentProvider}) · ${p.customer.city}, ${p.customer.country} · ${p.customer.maskedEmail}`,
     );
   });
 

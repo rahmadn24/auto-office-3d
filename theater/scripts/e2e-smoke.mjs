@@ -13,7 +13,10 @@
  *   6. Briefing Room (Fase 8): buka /briefing → chat Founder→PM dari UI →
  *      observer mendengar `pm:reply` → tombol GO mengompilasi brief dan
  *      mengirim `founder:directive` (run otonom kedua).
- *   7. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
+ *   7. Payment (Fase 9): buka /terminal → tombol "Simulate Payment" →
+ *      observer mendengar `milestone:first_sale` (provider stub) → banner
+ *      CELEBRATE "FIRST CUSTOMER ACQUIRED" muncul di UI.
+ *   8. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
  *
  * Env: E2E_BRAIN_PORT (4899), E2E_THEATER_PORT (3101), E2E_TIMEOUT_MS (150000),
  *      E2E_VERBOSE=0 untuk senyapkan log service.
@@ -128,6 +131,7 @@ async function main() {
     // Observer socket: bukti bebas-DOM bahwa directive dari UI memulai pipeline.
     const statusEvents = [];
     const pmReplies = [];
+    const milestones = [];
     const observer = io(`http://127.0.0.1:${BRAIN_PORT}`, {
       path: '/brain-server',
       transports: ['websocket'],
@@ -141,6 +145,7 @@ async function main() {
       page.on('pageerror', (err) => pageConsole.push(`pageerror: ${err.message}`));
       observer.on('agent:status_update', (payload) => statusEvents.push(payload));
       observer.on('pm:reply', (payload) => pmReplies.push(payload));
+      observer.on('milestone:first_sale', (payload) => milestones.push(payload));
 
       await page.goto(`http://127.0.0.1:${THEATER_PORT}`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(
@@ -229,6 +234,38 @@ async function main() {
       );
       console.log(
         '✓ GO — brief terkompilasi terkirim sebagai founder:directive (run otonom jalan)',
+      );
+
+      // ── Payment demo (Fase 9): Simulate Payment → milestone + CELEBRATE ────
+      await page.goto(`http://127.0.0.1:${THEATER_PORT}/terminal`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForFunction(
+        () => document.body.innerText.includes('SOCKET.IO CONNECTED'),
+        undefined,
+        { timeout: 30_000 },
+      );
+
+      const milestonesBefore = milestones.length;
+      await page.getByRole('button', { name: /Simulate Payment/i }).click();
+      console.log('» Simulate Payment diklik dari UI (driver stub)');
+
+      const payDeadline = Date.now() + 20_000;
+      while (milestones.length <= milestonesBefore && Date.now() < payDeadline) await sleep(250);
+      if (milestones.length <= milestonesBefore) {
+        throw new Error('tidak ada milestone:first_sale dari brain setelah Simulate Payment');
+      }
+      const paid = milestones[milestones.length - 1];
+      if (paid?.paymentProvider !== 'stub' || !paid?.hasCustomers) {
+        throw new Error(`milestone tidak sesuai contract PRD §5.2: ${JSON.stringify(paid)}`);
+      }
+      await page.waitForFunction(
+        () => document.body.innerText.includes('FIRST CUSTOMER ACQUIRED'),
+        undefined,
+        { timeout: 10_000 },
+      );
+      console.log(
+        `✓ payment stub ${paid.currency} ${paid.amount} → milestone:first_sale + banner CELEBRATE di UI`,
       );
     } finally {
       observer.close();
