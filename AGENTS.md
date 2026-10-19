@@ -114,6 +114,9 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
   env shell menang atas isi file. Jangan commit `.env` (sudah gitignored) — contoh di
   `.env.example`. Routing model 9router: `OPENAI_COMPAT_MODEL_*` per task; model gratis
   opencode memakai id `oc/<nama>-free` (mis. `oc/glm-5.3-flash-free`).
+- Founder Command Bar sudah DIHAPUS — input manusia tunggal = floating chat PM (composer
+  dua baris + GO). Jangan tambah overlay fixed di kiri-bawah (chat) atau kanan-bawah
+  (Agent Stream); HUD perf & tombol Celebrate tinggal di nav AppShell (`xl:` saja).
 - Socket client: BrainBridge WAJIB di `app/layout.tsx` (bukan per-tab) supaya koneksi
   tidak drop saat pindah tab.
 - Frame `run:replay` dikirim **hanya ke socket peminta** (bukan `io.emit`) — e2e/observer

@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
 import { ConnectionBadge } from '@/components/overlays/AgentStream';
-import { FounderCommandBar } from '@/components/shell/FounderCommandBar';
+import { CelebrateButton, CelebrationOverlay } from '@/components/overlays/CelebrationOverlay';
+import { PerfOverlay } from '@/components/overlays/PerfOverlay';
 import { nextTabIndex } from '@/lib/a11y';
 import { formatTokens } from '@/lib/format';
 import { useBrain } from '@/store/brainStore';
@@ -126,22 +127,18 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
   const pathname = usePathname();
   const active = tabKeyFor(pathname);
 
-  // Overlay fixed (PerfOverlay, tombol Celebrate) menempel di dasar viewport;
-  // ukur tinggi bar+footer → CSS var --shell-bottom-space agar overlay duduk
-  // DI ATAS area command bar (tidak ketumpuk). Diukur ulang via ResizeObserver
-  // (strip error bar menambah tinggi; breakpoint mobile menambah clearance dock).
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // Overlay fixed (CameraPresets) menempel di dasar viewport; ukur tinggi footer
+  // → CSS var --shell-bottom-space agar overlay duduk DI ATAS footer. Bar
+  // Founder Prompt sudah dihapus (chat PM = satu-satunya input).
   const footerRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
     const measure = (): void => {
-      const bar = bottomRef.current?.offsetHeight ?? 0;
       const footer = footerRef.current?.offsetHeight ?? 0;
-      document.documentElement.style.setProperty('--shell-bottom-space', `${bar + footer}px`);
+      document.documentElement.style.setProperty('--shell-bottom-space', `${footer}px`);
     };
     measure();
     const ro = new ResizeObserver(measure);
-    if (bottomRef.current) ro.observe(bottomRef.current);
     if (footerRef.current) ro.observe(footerRef.current);
     window.addEventListener('resize', measure);
     return () => {
@@ -188,22 +185,25 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
         <span className="font-mono text-mono-label uppercase tracking-wide text-[#38bdf8] md:hidden">
           {TABS.find((t) => t.key === active)?.label}
         </span>
+        {/* HUD dev + demo celebrate di nav — tidak menutupi kanvas/chat/stream. */}
+        <div className="ml-auto hidden items-center gap-2 xl:flex">
+          <PerfOverlay />
+          <CelebrateButton />
+        </div>
       </nav>
 
       {/* ── Konten view (isi flex) ── */}
       <main className="relative min-h-0 flex-1">{children}</main>
 
-      {/* ── Founder Command — PRD §3.1 (satu-satunya input manusia, semua tab) ── */}
-      <div ref={bottomRef} className="shrink-0">
-        <FounderCommandBar />
-      </div>
+      {/* Banner milestone FIRST CUSTOMER — global (tombolnya di nav). */}
+      <CelebrationOverlay />
 
       {/* ── Footer (identik antar tab) ── */}
       <footer
         ref={footerRef}
         className="flex shrink-0 items-center justify-between border-t border-white/8 bg-surface-container-low/60 px-4 py-1 font-mono text-label-xs uppercase tracking-widest text-tertiary backdrop-blur-sm"
       >
-        <span>Founder Prompt ⇄ Brain · Autonomous Loop</span>
+        <span>Founder ⇄ PM Chat · Autonomous Loop</span>
         <span className="hidden sm:inline">Milestone #1–#5</span>
       </footer>
 
