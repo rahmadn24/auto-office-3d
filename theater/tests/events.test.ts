@@ -8,7 +8,9 @@ import {
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
+  parseReplayFrame,
   parseRevenueUpdate,
+  parseRunRecord,
   parseSocialPost,
   type AgentStatusPayload,
   type FirstSalePayload,
@@ -234,4 +236,50 @@ describe('kontrak brief:compile — BriefPayload (paritas brain)', () => {
     expect(parseBrief({ ...validBrief, features: [] }).ok).toBe(false));
   it('directive kosong ditolak', () =>
     expect(parseBrief({ ...validBrief, directive: '' }).ok).toBe(false));
+});
+
+/* ───── Fase 10 — fixture paritas Event Replay (identik brain/tests/contract.test.ts) ───── */
+
+const validRunRecord = {
+  runId: 'run_x',
+  directive: 'Build a landing page',
+  projectName: 'Landing Demo',
+  status: 'completed' as const,
+  stage: 'done',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:05:00.000Z',
+  tokensUsed: 1200,
+  liveUrl: 'http://127.0.0.1:4599',
+  repoUrl: 'https://github.com/demo/landing',
+};
+
+const validReplayFrame = {
+  phase: 'event' as const,
+  runId: 'run_x',
+  total: 3,
+  index: 1,
+  event: {
+    seq: 1,
+    id: 7,
+    ts: '2026-01-01T00:00:00.000Z',
+    kind: 'agent',
+    agent: 'pm_agent',
+    message: 'PRD written',
+    payload: { preset: 'landing' },
+  },
+  timestamp: '2026-01-01T00:00:01.000Z',
+};
+
+describe('kontrak run record & replay frame (Fase 10 — paritas brain)', () => {
+  it('run record valid diterima', () => expect(parseRunRecord(validRunRecord).ok).toBe(true));
+  it('status di luar enum ditolak', () =>
+    expect(parseRunRecord({ ...validRunRecord, status: 'zombie' }).ok).toBe(false));
+  it('frame event valid diterima', () => expect(parseReplayFrame(validReplayFrame).ok).toBe(true));
+  it('frame start/end tanpa event diterima', () => {
+    const { event: _event, ...rest } = validReplayFrame;
+    expect(parseReplayFrame({ ...rest, phase: 'start', index: 0 }).ok).toBe(true);
+    expect(parseReplayFrame({ ...rest, phase: 'end', index: 3 }).ok).toBe(true);
+  });
+  it('phase di luar start/event/end ditolak', () =>
+    expect(parseReplayFrame({ ...validReplayFrame, phase: 'pause' }).ok).toBe(false));
 });

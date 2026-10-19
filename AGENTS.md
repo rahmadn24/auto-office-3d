@@ -19,14 +19,21 @@ scripts/  Tooling root (dev orchestrator).
 
 Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.ts`
 (node graph) · `brain/src/server/http.ts` (health/control/webhook/demo) ·
-`brain/src/server/socket.ts` (bootstrap + io handlers) ·
+`brain/src/server/socket.ts` (bootstrap + io handlers, termasuk `run:replay`) ·
 `brain/src/payments/` (Payment Sentinel multi-provider: provider.ts + driver
 stripe/midtrans/stub/xendit + factory `createPayment`) ·
-`brain/src/briefing.ts` (Briefing Room: founder:chat/pm:reply, compile brief) ·
+`brain/src/products/presets/` (preset stack tier-1 `landing`/`saas-fullstack`/
+`custom-app`: halaman + Dockerfile template + gate sendiri) ·
+`brain/src/integrations/dockerdeploy.ts` (DEPLOY_DRIVER=docker: build → run
+`demo-net` → health probe → READY) · `brain/src/briefing.ts` (Briefing Room:
+founder:chat/pm:reply, compile brief) ·
 `theater/components/briefing/BriefingRoom.tsx` (tab Briefing Room) ·
-`theater/app/layout.tsx` (BrainBridge socket sekali untuk semua tab) ·
-`theater/store/brainStore.ts` (state dari event) · `brain/src/version.ts`
-(BRAIN_VERSION — sumber tunggal, theater membacanya dari handshake `system:hello`).
+`theater/components/pipeline/RunReplayPanel.tsx` + `theater/store/replayStore.ts`
+(playback event replay) · `theater/app/layout.tsx` (BrainBridge socket sekali
+untuk semua tab) · `theater/store/brainStore.ts` (state dari event) ·
+`brain/src/version.ts` (BRAIN_VERSION — sumber tunggal, theater membacanya dari
+handshake `system:hello`) · `docker-compose.yml` + `deploy/Caddyfile` +
+`brain/Dockerfile` + `theater/Dockerfile` (office stack, Fase 10/soak).
 
 ## Perintah (root = paling gampang)
 
@@ -37,6 +44,7 @@ stripe/midtrans/stub/xendit + factory `createPayment`) ·
 | `npm test` / `npm run typecheck` | Versi cepat |
 | `npm run build` | `next build` theater (JANGAN bareng `npm run dev`) |
 | `npm run e2e` | E2E smoke browser (brain stub + theater + Chrome; butuh `npx playwright install chromium`) |
+| `npm run e2e:docker` | Smoke Docker Desktop: 3 preset → produk ter-deploy bisa diakses + isolasi + spin down (butuh Docker hidup + ~1 GB ruang) |
 
 Per paket sama saja: `npm --prefix brain run verify`, dst.
 
@@ -82,6 +90,10 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
   paket native (better-sqlite3, esbuild, fsevents) harus di-approve agar postinstall jalan.
 - Socket client: BrainBridge WAJIB di `app/layout.tsx` (bukan per-tab) supaya koneksi
   tidak drop saat pindah tab.
+- Frame `run:replay` dikirim **hanya ke socket peminta** (bukan `io.emit`) — e2e/observer
+  harus meminta replay sendiri, jangan menunggu broadcast.
+- `innerText` di Chromium mengikuti `text-transform: uppercase` — assertion UI
+  (mis. `PLAYBACK DONE`, `n/m EVENTS`) jangan mengandalkan huruf kecil.
 - Payment Sentinel (jangan regresi): signature invalid saat secret terpasang →
   `401` + `firstSale:false` tanpa menaikkan metrics; valid → `200` + sale.
   Route webhook mengikuti driver aktif: `/webhook/{stripe|midtrans|stub|xendit}`.

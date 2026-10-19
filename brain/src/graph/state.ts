@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { PRODUCT_PRESET_IDS, detectPreset } from '../products/presets';
+
 /**
  * State global satu run otonom (PRD §3).
  * Setiap node mengembalikan PATCH (partial) — reducer default adalah overwrite,
@@ -23,6 +25,8 @@ export const RunStateSchema = z.object({
   ]),
   /** path → isi berkas hasil codegen */
   artifacts: z.record(z.string(), z.string()),
+  /** Preset stack produk (PRD §3.1) — dipilih PM dari brief/directive. */
+  preset: z.enum(PRODUCT_PRESET_IDS).default('saas-fullstack'),
   prd: z.string().default(''),
   iteration: z.number().int().nonnegative().default(0),
   maxIterations: z.number().int().positive().default(5),
@@ -68,5 +72,6 @@ export function initialState(input: {
     ...input,
     stage: 'received',
     artifacts: {},
+    preset: detectPreset(input.founderPrompt),
   });
 }

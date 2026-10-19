@@ -267,6 +267,73 @@ async function main() {
       console.log(
         `✓ payment stub ${paid.currency} ${paid.amount} → milestone:first_sale + banner CELEBRATE di UI`,
       );
+
+      // ── Event Replay (Fase 10): putar ulang run dari event log durable ─────
+      // Frame replay dikirim ke socket peminta (bukan broadcast) — verifikasi
+      // dua sisi: observer minta replay sendiri (kontrak frame) + playback UI.
+      const runList = await new Promise((resolve) =>
+        observer.emit('run:list', { limit: 5 }, resolve),
+      );
+      const latestRun = runList?.runs?.[0];
+      if (!latestRun?.runId) throw new Error('run:list tidak berisi run durable');
+
+      const replayFrames = [];
+      const replayDone = new Promise((resolve) => {
+        observer.on('run:replay', (frame) => {
+          replayFrames.push(frame);
+          if (frame?.phase === 'end') resolve();
+        });
+      });
+      const replayAck = await new Promise((resolve) =>
+        observer.emit('run:replay', { runId: latestRun.runId, stepMs: 0 }, resolve),
+      );
+      if (!replayAck?.ok) {
+        throw new Error(`run:replay ditolak: ${JSON.stringify(replayAck)}`);
+      }
+      await Promise.race([
+        replayDone,
+        sleep(30_000).then(() => {
+          throw new Error('timeout menunggu frame run:replay end');
+        }),
+      ]);
+      const phases = replayFrames.map((frame) => frame.phase);
+      if (
+        phases[0] !== 'start' ||
+        phases.at(-1) !== 'end' ||
+        phases.filter((phase) => phase === 'event').length !== replayAck.total
+      ) {
+        throw new Error(`frame run:replay tidak sesuai kontrak: ${phases.slice(0, 10).join(',')}`);
+      }
+
+      await page.goto(`http://127.0.0.1:${THEATER_PORT}/pipeline`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForFunction(
+        () => document.body.innerText.includes('SOCKET.IO CONNECTED'),
+        undefined,
+        { timeout: 30_000 },
+      );
+      const replayButton = page
+        .locator('section:has-text("Run Replay · Event Log") button:has-text("▶")')
+        .first();
+      await replayButton.waitFor({ state: 'visible', timeout: 20_000 });
+      await replayButton.click();
+      console.log('» Replay diklik dari UI (panel Run Replay · Event Log)');
+      await page.waitForFunction(
+        () => document.body.innerText.includes('PLAYBACK DONE'),
+        undefined,
+        { timeout: 60_000 },
+      );
+      const progress = await page.evaluate(() => {
+        const match = /(\d+)\/(\d+) EVENTS/i.exec(document.body.innerText);
+        return match ? { received: Number(match[1]), total: Number(match[2]) } : null;
+      });
+      if (!progress || progress.total === 0 || progress.received !== progress.total) {
+        throw new Error(`progress playback UI tidak lengkap: ${JSON.stringify(progress)}`);
+      }
+      console.log(
+        `✓ event replay — ${replayAck.total} event (start → event* → end) + timeline PLAYBACK DONE di UI`,
+      );
     } finally {
       observer.close();
       await browser.close().catch(() => {});

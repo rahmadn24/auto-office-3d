@@ -10,7 +10,9 @@ import {
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
+  parseReplayFrame,
   parseRevenueUpdate,
+  parseRunRecord,
   parseSocialPost,
   type AgentStatusPayload,
   type BriefPayload,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/events';
 import { useBriefing } from '@/store/briefingStore';
 import { useBrain } from '@/store/brainStore';
+import { useReplay } from '@/store/replayStore';
 import { AGENT_ROSTER, useOffice, type AnimState, type AgentId } from '@/store/officeStore';
 import { ZONE_BY_KEY, type ZoneKey } from '@/lib/zones';
 
@@ -146,6 +149,7 @@ export function connectBrain(): Socket {
       revenue?: unknown;
       social?: unknown[];
       retrieval?: unknown[];
+      runs?: unknown[];
       memory?: Record<string, number>;
       control?: { haltedAll?: boolean; runIds?: string[] };
       artifacts?: unknown;
@@ -170,6 +174,12 @@ export function connectBrain(): Socket {
       .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
       .map((r) => r.payload);
     const artifacts = s.artifacts ? parseArtifacts(s.artifacts) : null;
+    // Fase 10 — run history durable untuk panel Event Replay.
+    const runs = (s.runs ?? [])
+      .map((run) => parseRunRecord(run))
+      .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+      .map((r) => r.payload);
+    useReplay.getState().setRuns(runs);
     useBrain.getState().hydrateSnapshot({
       agents,
       milestones,
@@ -271,6 +281,18 @@ export function connectBrain(): Socket {
       return;
     }
     useBriefing.getState().applyReply(parsed.payload);
+  });
+
+  // Fase 10 — Event Replay: frame playback run masa lalu (start → event* → end).
+  socket.on('run:replay', (raw: unknown) => {
+    const parsed = parseReplayFrame(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] run:replay DITOLAK:', parsed.issues);
+      return;
+    }
+    const frame = parsed.payload;
+    if (frame.phase === 'start') useReplay.getState().begin(frame.runId, frame.total);
+    else useReplay.getState().applyFrame(frame);
   });
 
   return socket;
@@ -387,6 +409,48 @@ export function compileBrief(
       resolve({ ok: true, brief: parsed.payload });
     });
   });
+}
+
+/* ───────── Fase 10 — Event Replay (kartu 10.4) ───────── */
+
+/**
+ * Putar ulang run masa lalu: ack berisi total event, lalu brain
+ * men-stream frame `run:replay` (start → event* → end) ke socket ini.
+ */
+export function replayRun(
+  runId: string,
+  options: { stepMs?: number; limit?: number } = {},
+): Promise<{ ok: boolean; total?: number; error?: string }> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'brain offline — sambungkan socket dulu' });
+      return;
+    }
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (5s)' }), 5000);
+    socket.emit(
+      'run:replay',
+      { runId, stepMs: options.stepMs, limit: options.limit },
+      (ack: unknown) => {
+        clearTimeout(timer);
+        const a = ack as { ok?: unknown; total?: unknown; error?: unknown } | null;
+        if (a && a.ok === true) {
+          const total = typeof a.total === 'number' ? a.total : 0;
+          useReplay.getState().begin(runId, total);
+          resolve({ ok: true, total });
+          return;
+        }
+        const error = typeof a?.error === 'string' ? a.error : 'nack';
+        useReplay.getState().fail(error);
+        resolve({ ok: false, error });
+      },
+    );
+  });
+}
+
+/** Hentikan playback yang sedang berjalan (brain berhenti mengirim frame). */
+export function cancelReplay(): void {
+  useReplay.getState().stop();
+  socket?.emit('run:replay', { cancel: true });
 }
 
 export function getBrainSocket(): Socket | null {

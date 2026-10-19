@@ -1,0 +1,27 @@
+# AutoOffice3D — Caddy vhost office stack (Fase 10).
+#
+#   http://office.localhost      → Theater (HUD)
+#   http://api.office.localhost  → Brain (health/control; socket tetap ke :4800)
+#
+# Wildcard demo (*.demo.localhost) disiapkan untuk Fase 12: container demo
+# sudah membawa label `autooffice3d.route=demo.<slug>.localhost` +
+# `autooffice3d.preset`/`autooffice3d.slug`, jadi cukup menambahkan
+# caddy-docker-proxy atau blok wildcard di bawah saat CT wildcard dipakai.
+{
+	admin off
+	auto_https off
+}
+
+http://office.localhost {
+	reverse_proxy theater:3000
+}
+
+http://api.office.localhost {
+	reverse_proxy brain:4800
+}
+
+# Fase 12 — wildcard demo (aktifkan bersama caddy-docker-proxy):
+#
+# http://*.demo.localhost {
+#	reverse_proxy demo-upstreams
+# }

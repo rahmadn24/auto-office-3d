@@ -28,6 +28,13 @@ export interface GitHubDriver {
 export interface DeployInput {
   slug: string;
   files: Record<string, string>;
+  /** Nama proyek tampilan (halaman demo) + id run untuk label container. */
+  projectName?: string;
+  runId?: string;
+  /** Preset stack produk (PRD §3.1 / Fase 10) — dipakai driver `docker`. */
+  preset?: string;
+  /** Direktif founder — tagline halaman demo yang dirender driver `docker`. */
+  directive?: string;
   /** Callback per langkah build (untuk disiarkan bertahap ke Theater). */
   onStep?: (steps: BuildStep[], status: DeployStatus) => void;
 }
@@ -40,10 +47,16 @@ export interface DeployResult {
   uptimeS: number;
   bandwidthMb: number;
   edgeCache: boolean;
+  /** Nama container demo (driver `docker`) — dipakai spin down / teardown. */
+  containerName?: string;
+  /** Alasan degradasi spesifik driver (mis. docker daemon mati / build gagal). */
+  degradedReason?: string;
 }
 
 export interface DeployDriver {
   deploy(input: DeployInput): Promise<DeployResult>;
+  /** Spin down instance demo (driver `docker`; driver lain tidak punya instance). */
+  spinDown?(containerName: string): Promise<boolean>;
 }
 
 /* ───────────────────── Health Check Probe (PRD §3.3) ───────────────────── */

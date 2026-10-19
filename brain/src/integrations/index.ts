@@ -1,4 +1,5 @@
 import type { Config } from '../config';
+import { DockerDeploy } from './dockerdeploy';
 import { ResendEmail, StubEmail, type EmailDriver } from './email';
 import { LiveGitHub, LocalGitHub, type GitHubDriver } from './github';
 import { HttpHealthProbe, OfflineHealthProbe, type HealthProbe } from './health';
@@ -7,15 +8,21 @@ import type { SocialDriver } from './types';
 import { LiveVercel, LocalVercel, type DeployDriver } from './vercel';
 
 export * from './types';
+export { DockerDeploy } from './dockerdeploy';
 
 export function createGitHub(config: Config): GitHubDriver {
   return config.githubToken ? new LiveGitHub(config.githubToken) : new LocalGitHub();
 }
 
 export function createDeploy(config: Config): DeployDriver {
-  return config.deployDriver === 'vercel'
-    ? new LiveVercel(config.vercelToken ?? '')
-    : new LocalVercel();
+  if (config.deployDriver === 'vercel') return new LiveVercel(config.vercelToken ?? '');
+  if (config.deployDriver === 'docker') {
+    return new DockerDeploy({
+      publishHost: config.deployPublishHost,
+      probeHost: config.deployProbeHost,
+    });
+  }
+  return new LocalVercel();
 }
 
 /**
@@ -24,7 +31,9 @@ export function createDeploy(config: Config): DeployDriver {
  */
 export function createHealthProbe(config: Config, liveUrl?: string): HealthProbe {
   if (liveUrl) return new HttpHealthProbe();
-  return config.deployDriver === 'vercel' ? new HttpHealthProbe() : new OfflineHealthProbe();
+  return config.deployDriver === 'vercel' || config.deployDriver === 'docker'
+    ? new HttpHealthProbe()
+    : new OfflineHealthProbe();
 }
 
 export function createEmail(config: Config): EmailDriver {
