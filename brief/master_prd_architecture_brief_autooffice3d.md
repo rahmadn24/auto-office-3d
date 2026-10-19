@@ -349,7 +349,7 @@ interface PaymentLinkPayload {
 
 ## 7. Delivery Roadmap & Checklist Implementasi
 
-> Status per PRD v3.0: **Fase 1–11 selesai & merged** (Brain 245/245 test, Theater 98/98 test, e2e smoke browser PASS termasuk event replay + closing CS lewat widget) + hardening pra-Fase 8 (AGENTS.md, root scripts, CI GitHub Actions, e2e smoke, fail-fast config). Fase 12–13 adalah komitmen berikutnya. Seluruh fase berlangsung **lokal di mesin Founder** terlebih dahulu; soak test beberapa minggu menjadi prasyarat migrasi VPS (Fase 12).
+> Status per PRD v3.0: **Fase 1–11 selesai & merged** (Brain 248/248 test, Theater 98/98 test, e2e smoke browser PASS termasuk event replay + closing CS lewat widget) + hardening pra-Fase 8 (AGENTS.md, root scripts, CI GitHub Actions, e2e smoke, fail-fast config). Fase 12–13 adalah komitmen berikutnya. Seluruh fase berlangsung **lokal di mesin Founder** terlebih dahulu; soak test beberapa minggu menjadi prasyarat migrasi VPS (Fase 12).
 
 | Fase | Status | Deliverable Utama |
 | :--- | :---: | :--- |
