@@ -21,6 +21,7 @@ import type { LLMProvider } from '../llm/provider';
 import { logger } from '../logger';
 import { createPayment, type PaymentProvider } from '../payments';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
+import { assertDailyBudget, readDailyBudget } from '../telemetry/dailyBudget';
 import type {
   AgentStatusPayload,
   ArtifactsPayload,
@@ -39,6 +40,7 @@ import {
   parseAgentStatus,
   parseArtifacts,
   parseBrief,
+  parseBudgetUpdate,
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
@@ -47,7 +49,7 @@ import {
   parseRevenueUpdate,
   parseSocialPost,
 } from './contract';
-import type { ReplayEventPayload, ReplayFramePayload } from './contract';
+import type { BudgetUpdatePayload, ReplayEventPayload, ReplayFramePayload } from './contract';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -164,6 +166,8 @@ export async function startSocketServer(
     ...(cs ? { cs } : {}),
     ...(cs ? { widget: { baseUrl: config.csWidgetUrl, socketPath: config.socketPath } } : {}),
     ...(config.authToken ? { authToken: config.authToken } : {}),
+    maxBodyBytes: config.webhookMaxBodyBytes,
+    corsOrigins: config.corsOrigins,
     // /health diperkaya (Fase 12): driver aktif + jumlah run + ukuran DATA_DIR.
     health: () => {
       const latest = store?.listRuns(1)[0];
@@ -190,6 +194,7 @@ export async function startSocketServer(
             }
           : {}),
         data: { dir: config.dataDir, bytes: dirSizeBytes(config.dataDir) },
+        budget: budgetPayload(),
       };
     },
   });
@@ -208,13 +213,32 @@ export async function startSocketServer(
 
   const io = new Server(httpServer, {
     path: config.socketPath,
-    cors: { origin: '*' },
+    // Fase 13: allowlist origin via CORS_ORIGINS (`*` = semua — default lokal).
+    cors: { origin: config.corsOrigins.includes('*') ? true : config.corsOrigins },
     // WebSocket dulu; bila gagal (jaringan memblokir) otomatis jatuh ke long-polling.
     transports: ['websocket', 'polling'],
     pingInterval: 10_000,
     pingTimeout: 5_000,
   });
   ioRef = io;
+
+  /** Status budget harian + timestamp — dipakai /health, system:hello, budget:update. */
+  function budgetPayload(): BudgetUpdatePayload {
+    return {
+      ...readDailyBudget(store, config.dailyTokenBudget),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /** Broadcast status budget terbaru ke Theater (setelah run selesai / ditolak). */
+  function emitBudget(): void {
+    const parsed = parseBudgetUpdate(budgetPayload());
+    if (!parsed.ok) {
+      logger.warn({ issues: parsed.issues }, 'budget:update DITOLAK (skema tidak valid)');
+      return;
+    }
+    io.emit('budget:update', parsed.payload);
+  }
 
   // Auth token (Fase 12): koneksi tanpa token tetap diterima sebagai kanal
   // publik widget CS (`cs:widget_message`); aksi operator butuh token.
@@ -331,6 +355,8 @@ export async function startSocketServer(
         tokenBudget: config.tokenBudget,
         coverageThreshold: COVERAGE_THRESHOLD,
       },
+      // Fase 13 — status budget harian lintas-run saat klien (re)connect.
+      budget: budgetPayload(),
       durability: {
         dataDir: config.dataDir,
         memory: config.memoryDriver,
@@ -570,6 +596,16 @@ export async function startSocketServer(
         ack?.({ ok: false, error: 'empty directive' });
         return;
       }
+      // Fase 13 — budget harian lintas-run: tolak run baru dengan pesan jelas.
+      try {
+        assertDailyBudget(store, config.dailyTokenBudget);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn({ err }, 'founder:directive DITOLAK — budget harian habis');
+        ack?.({ ok: false, error: message });
+        emitBudget();
+        return;
+      }
       ack?.({ ok: true, queued: true });
       const { runAutonomous } = await import('../run');
       void runAutonomous(prompt, {
@@ -590,7 +626,9 @@ export async function startSocketServer(
         .catch((err: unknown) => {
           logger.error({ err }, 'autonomous run failed');
           void opts.notify?.send(runFailedMessage('founder:directive', err));
-        });
+        })
+        // Status budget berubah setelah run selesai (token tercatat) — segarkan UI.
+        .finally(() => emitBudget());
     });
 
     /* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */

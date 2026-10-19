@@ -4,6 +4,7 @@ import {
   parseAgentStatus,
   parseArtifacts,
   parseBrief,
+  parseBudgetUpdate,
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
@@ -346,5 +347,23 @@ describe('kontrak lead:update & payment:link_created (Fase 11 — paritas brain)
     expect(parsePaymentLink(validPaymentLink).ok).toBe(true);
     expect(parsePaymentLink({ ...validPaymentLink, amount: 0 }).ok).toBe(false);
     expect(parsePaymentLink({ ...validPaymentLink, provider: 'paypal' }).ok).toBe(false);
+  });
+});
+
+describe('kontrak budget:update (Fase 13 — paritas brain)', () => {
+  const validBudget = {
+    limit: 2_000_000,
+    used: 125_000,
+    remaining: 1_875_000,
+    exhausted: false,
+    enabled: true,
+    resetsAt: '2026-01-02T00:00:00.000Z',
+    timestamp: '2026-01-01T12:00:00.000Z',
+  };
+
+  it('payload valid diterima; angka negatif & timestamp kosong ditolak', () => {
+    expect(parseBudgetUpdate(validBudget).ok).toBe(true);
+    expect(parseBudgetUpdate({ ...validBudget, used: -1 }).ok).toBe(false);
+    expect(parseBudgetUpdate({ ...validBudget, timestamp: '' }).ok).toBe(false);
   });
 });

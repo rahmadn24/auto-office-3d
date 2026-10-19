@@ -12,11 +12,19 @@ const EnvSchema = z.object({
   DATA_DIR: z.string().default('data'),
 
   // LLM
-  LLM_DRIVER: z.enum(['auto', 'stub', 'anthropic']).default('auto'),
+  LLM_DRIVER: z.enum(['auto', 'stub', 'anthropic', 'openai-compat']).default('auto'),
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Override endpoint Anthropic-compatible — mis. gateway lokal 9router (http://localhost:20128/v1). */
   ANTHROPIC_BASE_URL: z.string().optional(),
   MODEL: z.string().default('claude-3-5-sonnet-latest'),
+  /**
+   * Fase 13 — provider murah ber-format OpenAI chat completions (DeepSeek,
+   * Groq, OpenRouter, 9router). Key terpisah dari OPENAI_API_KEY embeddings
+   * supaya kunci embedding tidak pernah dipakai sebagai LLM tanpa sengaja.
+   */
+  OPENAI_COMPAT_API_KEY: z.string().optional(),
+  OPENAI_COMPAT_BASE_URL: z.string().default('https://api.openai.com/v1'),
+  OPENAI_COMPAT_MODEL: z.string().default('gpt-4o-mini'),
 
   // Memory
   MEMORY_DRIVER: z.enum(['auto', 'memory', 'lancedb', 'pinecone']).default('auto'),
@@ -79,6 +87,14 @@ const EnvSchema = z.object({
   // Guardrails (PRD §3.2 & §6.4)
   MAX_ITERATIONS: z.coerce.number().int().positive().default(5),
   TOKEN_BUDGET: z.coerce.number().int().positive().default(250_000),
+  /** Fase 13 — batas token harian lintas-run (0 = nonaktif). */
+  DAILY_TOKEN_BUDGET: z.coerce.number().int().nonnegative().default(2_000_000),
+
+  // Fase 13 — hardening HTTP/socket.
+  /** Allowlist origin CORS dipisah koma (`*` = semua, default lokal). */
+  CORS_ORIGINS: z.string().optional(),
+  /** Batas ukuran body webhook/HTTP (byte). Default 256 KiB. */
+  WEBHOOK_MAX_BODY_BYTES: z.coerce.number().int().positive().default(262_144),
 
   /**
    * Domain dasar demo publik (Fase 12) — container demo diberi label caddy
@@ -107,10 +123,13 @@ export interface Config {
   socketPath: string;
   /** Folder state durable (absolut) — lancedb/ + office.db. */
   dataDir: string;
-  llmDriver: 'stub' | 'anthropic';
+  llmDriver: 'stub' | 'anthropic' | 'openai-compat';
   anthropicApiKey?: string;
   anthropicBaseUrl?: string;
   model: string;
+  openaiCompatApiKey?: string;
+  openaiCompatBaseUrl: string;
+  openaiCompatModel: string;
   memoryDriver: 'memory' | 'lancedb' | 'pinecone';
   openaiApiKey?: string;
   openaiBaseUrl?: string;
@@ -149,6 +168,12 @@ export interface Config {
   csWidgetUrl: string;
   maxIterations: number;
   tokenBudget: number;
+  /** Fase 13 — batas token harian lintas-run; 0 = nonaktif. */
+  dailyTokenBudget: number;
+  /** Fase 13 — allowlist origin CORS (`['*']` = semua). */
+  corsOrigins: string[];
+  /** Fase 13 — batas body HTTP (byte). */
+  webhookMaxBodyBytes: number;
   /** Fase 12 — log level terstruktur (pino). */
   logLevel: LogLevel;
   /** Fase 12 — notifikasi founder keluar (soak tanpa ditunggui). */
@@ -178,7 +203,13 @@ export function loadConfig(
   const e = parsed.data;
 
   const llmDriver =
-    e.LLM_DRIVER === 'auto' ? (e.ANTHROPIC_API_KEY ? 'anthropic' : 'stub') : e.LLM_DRIVER;
+    e.LLM_DRIVER === 'auto'
+      ? e.ANTHROPIC_API_KEY
+        ? 'anthropic'
+        : e.OPENAI_COMPAT_API_KEY
+          ? 'openai-compat'
+          : 'stub'
+      : e.LLM_DRIVER;
   const memoryDriver =
     e.MEMORY_DRIVER === 'auto'
       ? e.PINECONE_API_KEY && e.PINECONE_HOST
@@ -234,6 +265,9 @@ export function loadConfig(
   if (llmDriver === 'anthropic' && !e.ANTHROPIC_API_KEY) {
     problems.push('LLM_DRIVER=anthropic butuh ANTHROPIC_API_KEY');
   }
+  if (llmDriver === 'openai-compat' && !e.OPENAI_COMPAT_API_KEY) {
+    problems.push('LLM_DRIVER=openai-compat butuh OPENAI_COMPAT_API_KEY');
+  }
   if (memoryDriver === 'pinecone' && !(e.PINECONE_API_KEY && e.PINECONE_HOST)) {
     problems.push('MEMORY_DRIVER=pinecone butuh PINECONE_API_KEY + PINECONE_HOST');
   }
@@ -284,6 +318,9 @@ export function loadConfig(
     anthropicApiKey: e.ANTHROPIC_API_KEY,
     anthropicBaseUrl: e.ANTHROPIC_BASE_URL,
     model: e.MODEL,
+    openaiCompatApiKey: e.OPENAI_COMPAT_API_KEY,
+    openaiCompatBaseUrl: e.OPENAI_COMPAT_BASE_URL,
+    openaiCompatModel: e.OPENAI_COMPAT_MODEL,
     memoryDriver,
     openaiApiKey: e.OPENAI_API_KEY,
     openaiBaseUrl: e.OPENAI_BASE_URL,
@@ -322,6 +359,14 @@ export function loadConfig(
     csWidgetUrl: (e.CS_WIDGET_URL ?? csPublicBaseUrl).replace(/\/+$/, ''),
     maxIterations: e.MAX_ITERATIONS,
     tokenBudget: e.TOKEN_BUDGET,
+    dailyTokenBudget: e.DAILY_TOKEN_BUDGET,
+    corsOrigins:
+      e.CORS_ORIGINS === undefined || e.CORS_ORIGINS.trim() === ''
+        ? ['*']
+        : e.CORS_ORIGINS.split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+    webhookMaxBodyBytes: e.WEBHOOK_MAX_BODY_BYTES,
     logLevel: resolveLogLevel(e.LOG_LEVEL),
     notifyDriver,
     telegramBotToken: e.TELEGRAM_BOT_TOKEN,

@@ -7,7 +7,3 @@ export const GLASS = 'border border-white/8 bg-[rgba(19,24,38,0.7)] backdrop-blu
 
 /** Glass lebih pekat (overlay/inspector yang menutupi kanvas). */
 export const GLASS_STRONG = 'border border-white/8 bg-[rgba(19,24,38,0.88)] backdrop-blur-[16px]';
-
-/** Gutter desktop (1.5rem) & margin desktop (2rem) dari DESIGN.md. */
-export const GUTTER_DESKTOP = 24;
-export const MARGIN_DESKTOP = 32;

@@ -33,6 +33,33 @@ describe('config & driver resolution', () => {
     expect(config.sandboxDriver).toBe('e2b');
   });
 
+  it('auto: hanya OPENAI_COMPAT_API_KEY → driver openai-compat (Fase 13)', () => {
+    const config = loadConfig({ OPENAI_COMPAT_API_KEY: 'sk-compat-x' });
+    expect(config.llmDriver).toBe('openai-compat');
+    expect(config.openaiCompatApiKey).toBe('sk-compat-x');
+    expect(config.openaiCompatBaseUrl).toBe('https://api.openai.com/v1');
+    expect(config.openaiCompatModel).toBe('gpt-4o-mini');
+  });
+
+  it('OPENAI_API_KEY embeddings tidak pernah dipakai sebagai LLM chat (kunci terpisah)', () => {
+    const config = loadConfig({ OPENAI_API_KEY: 'sk-embed-x' });
+    expect(config.llmDriver).toBe('stub');
+  });
+
+  it('Fase 13 — budget harian & hardening default aman', () => {
+    const config = loadConfig({});
+    expect(config.dailyTokenBudget).toBe(2_000_000);
+    expect(config.webhookMaxBodyBytes).toBe(262_144);
+    expect(config.corsOrigins).toEqual(['*']);
+    expect(
+      loadConfig({ CORS_ORIGINS: 'https://office.example, https://cs.example ' }).corsOrigins,
+    ).toEqual(['https://office.example', 'https://cs.example']);
+    expect(loadConfig({ DAILY_TOKEN_BUDGET: '0' }).dailyTokenBudget).toBe(0);
+    expect(loadConfig({ OPENAI_COMPAT_MODEL: 'deepseek-chat' }).openaiCompatModel).toBe(
+      'deepseek-chat',
+    );
+  });
+
   it('auto: sebagian kredensial → jatuh ke driver aman', () => {
     const config = loadConfig({ ANTHROPIC_API_KEY: 'sk-ant-x' });
     expect(config.llmDriver).toBe('anthropic');
@@ -56,6 +83,7 @@ describe('config & driver resolution', () => {
 
   it('driver live dipaksa eksplisit tanpa kredensial → error jelas saat boot (fail fast)', () => {
     expect(() => loadConfig({ LLM_DRIVER: 'anthropic' })).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => loadConfig({ LLM_DRIVER: 'openai-compat' })).toThrow(/OPENAI_COMPAT_API_KEY/);
     expect(() => loadConfig({ MEMORY_DRIVER: 'pinecone' })).toThrow(/PINECONE_API_KEY/);
     expect(() => loadConfig({ SANDBOX_DRIVER: 'e2b' })).toThrow(/E2B_API_KEY/);
     expect(() => loadConfig({ DEPLOY_DRIVER: 'vercel' })).toThrow(/VERCEL_TOKEN/);

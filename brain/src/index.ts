@@ -8,6 +8,7 @@ import { createEmail } from './integrations';
 import { breakerMessage, createNotifier, deployMessage, saleMessage } from './integrations/notify';
 import { logger } from './logger';
 import { createLLM } from './llm';
+import { formatCostUsd } from './llm/pricing';
 import { createMemory } from './memory';
 import { createPayment } from './payments';
 import { runAutonomous, seedMemory } from './run';
@@ -130,7 +131,7 @@ async function main(): Promise<void> {
   if (prompt) {
     console.log(`\n  founder      "${prompt}"\n`);
     const started = Date.now();
-    const { state, tokensUsed } = await runAutonomous(prompt, {
+    const { state, tokensUsed, costUsd } = await runAutonomous(prompt, {
       config,
       emit: bus,
       payment,
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
       leads,
     });
     console.log(
-      `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
+      `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ~${formatCostUsd(costUsd)} · ${Date.now() - started}ms`,
     );
     console.log(`    live: https://${state.liveUrl}`);
     if (state.fallbackTriggered) {

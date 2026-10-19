@@ -72,8 +72,11 @@ export function CelebrationOverlay(): ReactNode {
 
   return (
     <>
-      {/* Banner milestone */}
+      {/* Banner milestone — role=status agar pembaca layar mengumumkan sale. */}
       <div
+        role="status"
+        aria-live="polite"
+        aria-hidden={!showBanner}
         className={`pointer-events-none fixed inset-x-0 top-20 z-50 flex justify-center px-4 transition-all duration-500 ${
           showBanner ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'
         }`}

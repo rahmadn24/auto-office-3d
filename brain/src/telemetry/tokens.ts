@@ -19,6 +19,8 @@ export class TokenBudgetExceededError extends Error {
 
 export class TokenBudget {
   private used = 0;
+  private inputUsed = 0;
+  private outputUsed = 0;
   private killed = false;
   private readonly divisions: Record<string, number> = {};
 
@@ -28,12 +30,19 @@ export class TokenBudget {
   add(usage: TokenUsage, division?: string): number {
     const total = usage.inputTokens + usage.outputTokens;
     this.used += total;
+    this.inputUsed += usage.inputTokens;
+    this.outputUsed += usage.outputTokens;
     if (division) this.divisions[division] = (this.divisions[division] ?? 0) + total;
     if (this.used > this.limit) {
       this.killed = true;
       throw new TokenBudgetExceededError(this.used, this.limit);
     }
     return this.used;
+  }
+
+  /** Pemakaian input/output terpisah — untuk estimasi biaya (Fase 13). */
+  get usage(): TokenUsage {
+    return { inputTokens: this.inputUsed, outputTokens: this.outputUsed };
   }
 
   /** Riwayat pemakaian per divisi (PM/Dev/QA…) untuk HUD. */

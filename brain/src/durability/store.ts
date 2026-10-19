@@ -222,6 +222,17 @@ export class RunStore {
     return row.n;
   }
 
+  /**
+   * Total token run yang selesai sejak `sinceIso` (budget harian — Fase 13).
+   * `updated_at` ≈ waktu `finishRun` menulis angka token final per run.
+   */
+  tokensUsedSince(sinceIso: string): number {
+    const row = this.db
+      .prepare('SELECT COALESCE(SUM(tokens_used), 0) AS n FROM runs WHERE updated_at >= ?')
+      .get(sinceIso) as { n: number };
+    return row.n;
+  }
+
   listEvents(runId: string, limit = 200): RunEventRecord[] {
     const rows = this.db
       .prepare('SELECT * FROM run_events WHERE run_id = ? ORDER BY id DESC LIMIT ?')

@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
 import { ConnectionBadge } from '@/components/overlays/AgentStream';
 import { FounderCommandBar } from '@/components/shell/FounderCommandBar';
+import { nextTabIndex } from '@/lib/a11y';
 import { formatTokens } from '@/lib/format';
 import { useBrain } from '@/store/brainStore';
 
@@ -35,11 +36,28 @@ function HeaderStats(): ReactNode {
   const agents = useBrain((s) => s.agents);
   const tokens = useBrain((s) => s.tokens);
   const pingMs = useBrain((s) => s.pingMs);
+  const budget = useBrain((s) => s.budget);
   const count = Object.keys(agents).length;
+  const budgetTone = !budget?.enabled
+    ? '#94a3b8'
+    : budget.exhausted
+      ? '#f87171'
+      : budget.used / budget.limit >= 0.8
+        ? '#ffb95f'
+        : '#4edea3';
   return (
     <div className="hidden items-center gap-3 font-mono text-mono-label uppercase tracking-wide sm:flex">
       <Stat k="Agents" v={String(count)} tone="#4edea3" />
       <Stat k="Tokens" v={formatTokens(tokens)} tone="#818cf8" />
+      {budget ? (
+        <span title="Budget token harian lintas-run (DAILY_TOKEN_BUDGET)">
+          <Stat
+            k="Budget"
+            v={`${formatTokens(budget.used)}/${formatTokens(budget.limit)}`}
+            tone={budgetTone}
+          />
+        </span>
+      ) : null}
       <Stat k="Ping" v={pingMs == null ? '—' : `${pingMs}ms`} tone="#ffb95f" />
     </div>
   );
@@ -68,6 +86,7 @@ function TabLink({
   return (
     <Link
       href={href}
+      data-tab-link
       className="group relative flex flex-col justify-center rounded-t-md px-3 py-1.5 transition-colors"
       style={{
         backgroundColor: active ? 'rgba(56,189,248,0.08)' : 'transparent',
@@ -83,6 +102,20 @@ function TabLink({
       </span>
     </Link>
   );
+}
+
+/**
+ * Navigasi keyboard antar tab (ArrowLeft/ArrowRight/Home/End) — roving fokus
+ * sederhana tanpa mengubah urutan tab (Fase 13 — aksesibilitas sidebar).
+ */
+function onNavKeyDown(e: KeyboardEvent<HTMLElement>): void {
+  const links = Array.from(e.currentTarget.querySelectorAll<HTMLAnchorElement>('[data-tab-link]'));
+  if (links.length === 0) return;
+  const current = links.findIndex((l) => l === document.activeElement);
+  const next = nextTabIndex(current, links.length, e.key);
+  if (next === null) return;
+  e.preventDefault();
+  links[next]?.focus();
 }
 
 /**
@@ -136,7 +169,11 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
       </header>
 
       {/* ── Tab nav (desktop: bar; mobile: dock bawah) ── */}
-      <nav className="flex shrink-0 items-center gap-1 border-b border-white/8 bg-surface-container-low/50 px-2 backdrop-blur-sm">
+      <nav
+        className="flex shrink-0 items-center gap-1 border-b border-white/8 bg-surface-container-low/50 px-2 backdrop-blur-sm"
+        aria-label="Navigasi tab utama"
+        onKeyDown={onNavKeyDown}
+      >
         <div className="hidden gap-1 md:flex">
           {TABS.map((t) => (
             <TabLink

@@ -15,10 +15,12 @@ import {
   createSocial,
 } from './integrations';
 import { createLLM } from './llm';
+import { estimateCostUsd } from './llm/pricing';
 import { createMemory } from './memory';
 import type { MemoryProvider } from './memory/provider';
 import { createPayment, type PaymentProvider } from './payments';
 import { createSandbox } from './sandbox';
+import { assertDailyBudget } from './telemetry/dailyBudget';
 import { TokenBudget } from './telemetry/tokens';
 import type { Config } from './config';
 import { loadConfig } from './config';
@@ -78,6 +80,7 @@ function emitArtifacts(
   founderPrompt: string,
   tokensUsed: number,
   durationMs: number,
+  costUsd?: number | null,
 ): void {
   if (!events.artifacts || Object.keys(state.artifacts).length === 0) return;
   const files = Object.entries(state.artifacts)
@@ -97,6 +100,7 @@ function emitArtifacts(
     cycles: state.iteration,
     maxCycles: state.maxIterations,
     tokensUsed,
+    ...(typeof costUsd === 'number' ? { costUsd } : {}),
     liveUrl: state.liveUrl,
     repoUrl: state.repoUrl,
     durationMs,
@@ -163,6 +167,10 @@ export interface RunResult {
   state: RunState;
   events: EventBus;
   tokensUsed: number;
+  /** Pemakaian input/output terpisah — dasar estimasi biaya (Fase 13). */
+  usage: { inputTokens: number; outputTokens: number };
+  /** Estimasi biaya (USD) dari tabel harga benchmark; null bila model tak dikenal. */
+  costUsd: number | null;
   /** Riwayat pemakaian token per divisi (PM/Dev/QA). */
   tokenBreakdown: Record<string, number>;
   runId: string;
@@ -177,6 +185,9 @@ export async function runAutonomous(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const config = options.config ?? loadConfig();
+  // Budget harian lintas-run (Fase 13): tolak run baru dengan pesan jelas
+  // sebelum ada efek samping (memory seed / LLM call).
+  assertDailyBudget(options.store, config.dailyTokenBudget);
   const events = options.emit ?? new EventBus();
   const budget = new TokenBudget(config.tokenBudget);
   const control = options.control ?? createControl();
@@ -227,7 +238,8 @@ export async function runAutonomous(
     state = { ...(snapshot.values as RunState), stage: 'halted' };
   }
 
-  emitArtifacts(events, state, founderPrompt, budget.total, Date.now() - runStartedAt);
+  const costUsd = estimateCostUsd(state.model, budget.usage);
+  emitArtifacts(events, state, founderPrompt, budget.total, Date.now() - runStartedAt, costUsd);
   options.store?.finishRun(runId, {
     status: statusForStage(state.stage),
     stage: state.stage,
@@ -240,6 +252,8 @@ export async function runAutonomous(
     state,
     events,
     tokensUsed: budget.total,
+    usage: budget.usage,
+    costUsd,
     tokenBreakdown: budget.byDivision(),
     runId,
     control,
@@ -315,7 +329,15 @@ export async function resumeAutonomous(
     state = { ...(halted.values as RunState), stage: 'halted' };
   }
 
-  emitArtifacts(events, state, state.founderPrompt, budget.total, Date.now() - runStartedAt);
+  const costUsd = estimateCostUsd(state.model, budget.usage);
+  emitArtifacts(
+    events,
+    state,
+    state.founderPrompt,
+    budget.total,
+    Date.now() - runStartedAt,
+    costUsd,
+  );
   options.store?.finishRun(runId, {
     status: statusForStage(state.stage),
     stage: state.stage,
@@ -328,6 +350,8 @@ export async function resumeAutonomous(
     state,
     events,
     tokensUsed: budget.total,
+    usage: budget.usage,
+    costUsd,
     tokenBreakdown: budget.byDivision(),
     runId,
     control,

@@ -7,6 +7,7 @@ import { Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 import { CAMERA_RIG_PRESETS } from '@/lib/camera';
+import { useReducedMotion } from '@/lib/motion';
 import { ORBIT_LIMITS } from '@/lib/zones';
 import { useOffice } from '@/store/officeStore';
 
@@ -21,6 +22,7 @@ const tgt = new Vector3();
 export function CameraRig(): ReactNode {
   const preset = useOffice((s) => s.cameraPreset);
   const setPreset = useOffice((s) => s.setCameraPreset);
+  const reduced = useReducedMotion();
   const controls = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
 
@@ -39,7 +41,8 @@ export function CameraRig(): ReactNode {
   useFrame((_, delta) => {
     const impl = controls.current;
     if (!impl || !desired) return;
-    const k = 1 - Math.exp(-3 * Math.min(delta, 0.1));
+    // Reduced motion: lompat langsung ke pose preset (tanpa transisi lerp).
+    const k = reduced ? 1 : 1 - Math.exp(-3 * Math.min(delta, 0.1));
     camera.position.lerp(pos.set(...desired.position), k);
     impl.target.lerp(tgt.set(...desired.target), k);
     impl.update();
@@ -49,7 +52,7 @@ export function CameraRig(): ReactNode {
     <OrbitControls
       ref={controls}
       makeDefault
-      enableDamping
+      enableDamping={!reduced}
       dampingFactor={0.08}
       minPolarAngle={ORBIT_LIMITS.minPolarAngle}
       maxPolarAngle={ORBIT_LIMITS.maxPolarAngle}

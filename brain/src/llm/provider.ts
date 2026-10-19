@@ -205,3 +205,19 @@ export function parseFileBundle(text: string): Record<string, string> {
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
+
+/** System prompt per task — dipakai semua driver produksi (Anthropic & OpenAI-compat). */
+export function systemPromptFor(task: LLMTask): string {
+  switch (task) {
+    case 'prd':
+      return prdSystemPrompt();
+    case 'code':
+      return codeSystemPrompt();
+    case 'brief':
+      return briefSystemPrompt();
+    case 'briefing':
+      return briefingSystemPrompt();
+    case 'cs':
+      return csSystemPrompt();
+  }
+}

@@ -166,6 +166,8 @@ export interface ArtifactsPayload {
   cycles: number;
   maxCycles: number;
   tokensUsed: number;
+  /** Estimasi biaya run (USD) dari tabel harga benchmark — Fase 13. */
+  costUsd?: number;
   liveUrl: string;
   repoUrl: string;
   durationMs: number;

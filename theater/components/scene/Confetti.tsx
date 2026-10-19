@@ -5,6 +5,7 @@ import { useMemo, useRef, type ReactNode } from 'react';
 import { Color, DoubleSide, MathUtils, Object3D, type InstancedMesh } from 'three';
 
 import { useOffice } from '@/store/officeStore';
+import { useReducedMotion } from '@/lib/motion';
 
 const COUNT = 140;
 const RING_RADIUS = 9;
@@ -25,6 +26,8 @@ interface Piece {
  */
 export function Confetti(): ReactNode {
   const active = useOffice((s) => s.celebrating);
+  // Prefers-reduced-motion: jangan animasikan partikel (banner tetap tampil).
+  const reduced = useReducedMotion();
   const mesh = useRef<InstancedMesh>(null);
   const vis = useRef(0);
   const colored = useRef(false);
@@ -46,6 +49,11 @@ export function Confetti(): ReactNode {
   useFrame((state, delta) => {
     const m = mesh.current;
     if (!m) return;
+    // Prefers-reduced-motion: konfeti tidak dirender sama sekali.
+    if (reduced) {
+      m.visible = false;
+      return;
+    }
     const dt = Math.min(delta, 0.1);
 
     vis.current = MathUtils.damp(vis.current, active ? 1 : 0, 4, dt);

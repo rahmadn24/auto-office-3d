@@ -1,14 +1,9 @@
 import {
-  briefSystemPrompt,
-  briefingSystemPrompt,
-  codeSystemPrompt,
-  csSystemPrompt,
   estimateTokens,
-  prdSystemPrompt,
+  systemPromptFor,
   type LLMProvider,
   type LLMRequest,
   type LLMResult,
-  type LLMTask,
 } from './provider';
 
 export interface AnthropicLLMOptions {
@@ -32,22 +27,6 @@ function errorName(err: unknown): string {
   return typeof err === 'object' && err !== null && 'name' in err
     ? String((err as { name: unknown }).name)
     : '';
-}
-
-/** System prompt per task — PRD/codegen fase 1–7; briefing/brief Fase 8; cs Fase 11. */
-function systemFor(task: LLMTask): string {
-  switch (task) {
-    case 'prd':
-      return prdSystemPrompt();
-    case 'code':
-      return codeSystemPrompt();
-    case 'brief':
-      return briefSystemPrompt();
-    case 'briefing':
-      return briefingSystemPrompt();
-    case 'cs':
-      return csSystemPrompt();
-  }
 }
 
 /**
@@ -115,7 +94,7 @@ export class AnthropicLLM implements LLMProvider {
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
-    const system = systemFor(request.task);
+    const system = systemPromptFor(request.task);
     const user = [
       `Project name: ${request.context.projectName}`,
       request.context.prd ? `\nPRD:\n${request.context.prd}` : '',
