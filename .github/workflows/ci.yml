@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  brain:
+    name: brain — verify (test · typecheck · lint · format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: brain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: brain/package-lock.json
+      - run: npm ci
+      - run: npm run verify
+
+  theater:
+    name: theater — verify (test · typecheck · lint · format) + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: theater
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: theater/package-lock.json
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run build
+
+  e2e:
+    name: e2e smoke — brain (stub) + theater + chrome
+    needs: [brain, theater]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      E2E_VERBOSE: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            brain/package-lock.json
+            theater/package-lock.json
+      - run: npm ci
+        working-directory: brain
+      - run: npm ci
+        working-directory: theater
+      - run: npx playwright install --with-deps chromium
+        working-directory: theater
+      - run: npm run e2e
+        working-directory: theater

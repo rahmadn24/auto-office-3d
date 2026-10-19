@@ -108,12 +108,35 @@ export function loadConfig(
     e.DEPLOY_DRIVER === 'auto' ? (e.VERCEL_TOKEN ? 'vercel' : 'local') : e.DEPLOY_DRIVER;
   const emailDriver =
     e.EMAIL_DRIVER === 'auto' ? (e.RESEND_API_KEY ? 'resend' : 'stub') : e.EMAIL_DRIVER;
+  // Threads belum diimplementasikan (integrations/social.ts) — jangan flip ke
+  // `live` hanya karena token Threads ada; `live` = benar-benar posting ke X.
   const socialDriver =
-    e.SOCIAL_DRIVER === 'auto'
-      ? e.X_BEARER_TOKEN || e.THREADS_ACCESS_TOKEN
-        ? 'live'
-        : 'stub'
-      : e.SOCIAL_DRIVER;
+    e.SOCIAL_DRIVER === 'auto' ? (e.X_BEARER_TOKEN ? 'live' : 'stub') : e.SOCIAL_DRIVER;
+
+  // Fail-fast: driver produksi dipaksa eksplisit tapi kredensial kurang = salah
+  // konfigurasi, bukan fallback diam-diam. Pesan menyebut env yang harus diisi.
+  const problems: string[] = [];
+  if (llmDriver === 'anthropic' && !e.ANTHROPIC_API_KEY) {
+    problems.push('LLM_DRIVER=anthropic butuh ANTHROPIC_API_KEY');
+  }
+  if (memoryDriver === 'pinecone' && !(e.PINECONE_API_KEY && e.PINECONE_HOST)) {
+    problems.push('MEMORY_DRIVER=pinecone butuh PINECONE_API_KEY + PINECONE_HOST');
+  }
+  if (sandboxDriver === 'e2b' && !e.E2B_API_KEY) {
+    problems.push('SANDBOX_DRIVER=e2b butuh E2B_API_KEY');
+  }
+  if (deployDriver === 'vercel' && !e.VERCEL_TOKEN) {
+    problems.push('DEPLOY_DRIVER=vercel butuh VERCEL_TOKEN');
+  }
+  if (emailDriver === 'resend' && !e.RESEND_API_KEY) {
+    problems.push('EMAIL_DRIVER=resend butuh RESEND_API_KEY');
+  }
+  if (socialDriver === 'live' && !e.X_BEARER_TOKEN) {
+    problems.push('SOCIAL_DRIVER=live butuh X_BEARER_TOKEN (integrasi Threads belum tersedia)');
+  }
+  if (problems.length > 0) {
+    throw new Error(`Invalid environment configuration — ${problems.join('; ')}`);
+  }
 
   return {
     port: e.PORT,
