@@ -25,7 +25,7 @@ export interface BriefingStore {
   brief: BriefPayload | null;
   /** Compile brief dari brain sedang berjalan. */
   compiling: boolean;
-  /** Hasil pengiriman directive hasil compile ('queued' = run berjalan). */
+  /** Hasil pengiriman directive hasil compile ('queued' = diterima brain, belum tentu run sukses). */
   runStart: { ok: boolean; error?: string } | null;
 
   setConversationId(id: string): void;

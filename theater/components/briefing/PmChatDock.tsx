@@ -328,7 +328,7 @@ export function PmChatDock(): ReactNode {
             </dl>
             {runStart?.ok ? (
               <div className="mt-1.5 border-t border-white/8 pt-1.5 font-mono text-[9.5px] uppercase tracking-wide text-[#4edea3]">
-                ✓ run otonom berjalan · founder:directive terkirim
+                ✓ directive terkirim · menunggu status agent
               </div>
             ) : null}
           </div>

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatLLM } from '../src/llm/openai';
 
 const okBody = {
-  choices: [{ message: { content: 'Halo dari model' } }],
+  choices: [{ message: { content: 'Halo dari model' }, finish_reason: 'stop' }],
   usage: { prompt_tokens: 12, completion_tokens: 34 },
 };
 
@@ -173,6 +173,67 @@ describe('OpenAICompatLLM — driver provider murah ber-format OpenAI (Fase 13)'
       'fallback-model',
     ]);
     expect([prd.model, code.model, cs.model, brief.model]).toEqual(models);
+  });
+
+  it('task code memakai JSON mode, max_tokens override, dan finish_reason diteruskan', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(okBody));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new OpenAICompatLLM('sk', 'm');
+    const result = await llm.complete({
+      task: 'code',
+      prompt: 'x',
+      context: { projectName: 'p' },
+      maxOutputTokens: 8192,
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body)) as {
+      max_tokens: number;
+      response_format?: { type: string };
+    };
+    expect(body.max_tokens).toBe(8192);
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(result.finishReason).toBe('stop');
+  });
+
+  it('task prd tidak memakai JSON mode (bukan output JSON)', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(okBody));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new OpenAICompatLLM('sk', 'm');
+    await llm.complete({ task: 'prd', prompt: 'x', context: { projectName: 'p' } });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body)) as {
+      response_format?: { type: string };
+    };
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it('response_format ditolak 400 → fallback request tanpa field itu', async () => {
+    const bodies: Array<{ response_format?: { type: string } }> = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as {
+        response_format?: { type: string };
+      };
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return new Response('response_format unsupported', { status: 400 });
+      }
+      return jsonResponse(okBody);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new OpenAICompatLLM('sk', 'm');
+    const result = await llm.complete({
+      task: 'brief',
+      prompt: 'x',
+      context: { projectName: 'p' },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(bodies[0]!.response_format).toEqual({ type: 'json_object' });
+    expect(bodies[1]!.response_format).toBeUndefined();
+    expect(result.text).toBe('Halo dari model');
   });
 
   it('timeout: request melewati batas waktu → error jelas tanpa percobaan ulang', async () => {

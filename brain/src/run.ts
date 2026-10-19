@@ -24,7 +24,7 @@ import { assertDailyBudget } from './telemetry/dailyBudget';
 import { TokenBudget } from './telemetry/tokens';
 import type { Config } from './config';
 import { loadConfig } from './config';
-import type { ArtifactsPayload } from './types';
+import { AGENT_HOME_ZONE, type ArtifactsPayload } from './types';
 import type { GraphDeps } from './graph/nodes';
 import type { RunState } from './graph/state';
 
@@ -107,6 +107,37 @@ function emitArtifacts(
     timestamp: new Date().toISOString(),
   };
   events.artifacts(payload);
+}
+
+/**
+ * Run gagal sebelum sempat menyiarkan status akhir → reset agen yang sudah
+ * aktif ke idle + bawa pesan error ke dashboard. Tanpa ini Theater hanya
+ * menampilkan status terakhir (biasanya PM) seolah run masih berjalan.
+ */
+function emitRunFailure(
+  events: EventBus,
+  runId: string,
+  err: unknown,
+  tokensUsed: number,
+  latencyMs: number,
+  model: string,
+): void {
+  const message = err instanceof Error ? err.message : String(err);
+  const activeAgents = new Set(events.history.map((p) => p.agentId));
+  if (activeAgents.size === 0) activeAgents.add('founder_agent');
+
+  for (const agentId of activeAgents) {
+    events.agent(
+      EventBus.payload({
+        runId,
+        agentId,
+        action: 'idle',
+        logMessage: `RUN FAILED · ${message}`,
+        zone: AGENT_HOME_ZONE[agentId],
+        telemetry: { tokensUsed, latencyMs, model },
+      }),
+    );
+  }
 }
 
 export interface RunOptions {
@@ -230,7 +261,12 @@ export async function runAutonomous(
     state = (await app.invoke(initial, invokeConfig)) as RunState;
   } catch (err) {
     if (!(err instanceof GraphHaltedError)) {
-      options.store?.finishRun(runId, { status: 'failed' });
+      emitRunFailure(events, runId, err, budget.total, Date.now() - runStartedAt, deps.llm.model);
+      options.store?.finishRun(runId, {
+        status: 'failed',
+        stage: 'failed',
+        tokensUsed: budget.total,
+      });
       throw err;
     }
     // Halt oleh operator: checkpoint tersimpan, stage di-report sebagai 'halted'.
@@ -322,7 +358,12 @@ export async function resumeAutonomous(
     state = (await app.invoke(null, invokeConfig)) as RunState;
   } catch (err) {
     if (!(err instanceof GraphHaltedError)) {
-      options.store?.finishRun(runId, { status: 'failed' });
+      emitRunFailure(events, runId, err, budget.total, Date.now() - runStartedAt, deps.llm.model);
+      options.store?.finishRun(runId, {
+        status: 'failed',
+        stage: 'failed',
+        tokensUsed: budget.total,
+      });
       throw err;
     }
     const halted = await app.getState(invokeConfig);

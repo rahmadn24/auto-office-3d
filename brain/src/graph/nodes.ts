@@ -239,21 +239,65 @@ export function devNode(deps: GraphDeps) {
     );
     reportRetrieval(deps, state, 'dev-memory', state.prd || state.founderPrompt, recall);
 
-    const result = await deps.llm.complete({
-      task: 'code',
+    const cycle = cycleLabel(state.iteration, state.maxIterations);
+    // Emit SEBELUM LLM call: dashboard harus melihat Dev aktif selama codegen
+    // (bisa 20–90 detik), bukan hanya PM yang terakhir bicara.
+    emitStatus(
+      deps,
+      state.runId,
+      'dev_agent',
+      'coding',
+      `Generating file bundle from PRD · ${cycle}`,
+      { zone: 'dev_lab', cycle: { current: state.iteration, max: state.maxIterations } },
+    );
+
+    const request = {
+      task: 'code' as const,
       prompt: state.founderPrompt,
       context: {
         projectName: state.projectName,
         prd: state.prd,
         retrieved: recall.map((h) => h.text),
       },
-    });
+      maxOutputTokens: 4096,
+    };
+
+    let result = await deps.llm.complete(request);
     deps.budget.add(result.usage, 'Engineering');
 
-    const files = parseFileBundle(result.text);
+    let files: Record<string, string>;
+    try {
+      files = parseFileBundle(result.text);
+    } catch (firstErr) {
+      const firstDetail = firstErr instanceof Error ? firstErr.message : String(firstErr);
+      // Retry sekali dengan output budget lebih besar. Model reasoning kadang
+      // memotong JSON di tengah; model non-reasoning cukup butuh ruang ekstra.
+      emitStatus(
+        deps,
+        state.runId,
+        'dev_agent',
+        'coding',
+        `Codegen JSON invalid (${firstDetail}) · retry 8.192 token`,
+        { zone: 'dev_lab', cycle: { current: state.iteration, max: state.maxIterations } },
+      );
+      result = await deps.llm.complete({ ...request, maxOutputTokens: 8192 });
+      deps.budget.add(result.usage, 'Engineering');
+      try {
+        files = parseFileBundle(result.text);
+      } catch (secondErr) {
+        const secondDetail = secondErr instanceof Error ? secondErr.message : String(secondErr);
+        emitStatus(deps, state.runId, 'dev_agent', 'idle', `CODEGEN FAILED · ${secondDetail}`, {
+          zone: 'dev_lab',
+        });
+        throw new Error(
+          `Dev Agent codegen failed after retry: ${secondDetail}` +
+            (result.finishReason ? ` (finish_reason=${result.finishReason})` : ''),
+        );
+      }
+    }
+
     // Diff dihitung terhadap state setelah merge (PRD tetap ada → unchanged).
     const diffs = diffArtifacts(state.artifacts, { ...state.artifacts, ...files });
-    const cycle = cycleLabel(state.iteration, state.maxIterations);
     const summary = diffSummary(diffs);
 
     emitStatus(

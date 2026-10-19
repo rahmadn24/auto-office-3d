@@ -41,7 +41,10 @@ interface ChatContentPart {
 }
 
 interface ChatCompletionBody {
-  choices?: Array<{ message?: { content?: string | ChatContentPart[] | null } }>;
+  choices?: Array<{
+    message?: { content?: string | ChatContentPart[] | null };
+    finish_reason?: string;
+  }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
@@ -129,14 +132,25 @@ export class OpenAICompatLLM implements LLMProvider {
           : `\nFounder directive:\n${request.prompt}`,
     ].join('\n');
 
-    const res = await this.post({
+    // Task yang kontraknya JSON (`code`/`brief`) meminta JSON mode. Beberapa
+    // provider OpenAI-compatible belum mendukung field ini; fallback ke request
+    // biasa bila gateway menolaknya (400/422), jangan gagalkan run.
+    const wantsJson = request.task === 'code' || request.task === 'brief';
+    const payload: Record<string, unknown> = {
       model,
-      max_tokens: 4096,
+      max_tokens: request.maxOutputTokens ?? 4096,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-    });
+    };
+    if (wantsJson) payload.response_format = { type: 'json_object' };
+
+    let res = await this.post(payload);
+    if (wantsJson && (res.status === 400 || res.status === 422)) {
+      delete payload.response_format;
+      res = await this.post(payload);
+    }
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
@@ -144,7 +158,8 @@ export class OpenAICompatLLM implements LLMProvider {
     }
 
     const json = (await res.json()) as ChatCompletionBody;
-    const content = json.choices?.[0]?.message?.content;
+    const choice = json.choices?.[0];
+    const content = choice?.message?.content;
     const text = Array.isArray(content)
       ? content.map((part) => (typeof part.text === 'string' ? part.text : '')).join('\n')
       : (content ?? '');
@@ -152,6 +167,7 @@ export class OpenAICompatLLM implements LLMProvider {
     return {
       text,
       model,
+      ...(choice?.finish_reason ? { finishReason: choice.finish_reason } : {}),
       usage: {
         inputTokens: json.usage?.prompt_tokens ?? estimateTokens(user + system),
         outputTokens: json.usage?.completion_tokens ?? estimateTokens(text),
