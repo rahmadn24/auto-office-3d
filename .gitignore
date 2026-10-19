@@ -3,5 +3,11 @@ node_modules/
 .env
 .env.local
 
+# durable state (PRD v3.0 §2.1) — jangan pernah masuk git
+data/
+
 # artefak verifikasi browser (Playwright MCP)
 .playwright-mcp/
+
+# hasil benchmark LLM (generated)
+brain/bench/

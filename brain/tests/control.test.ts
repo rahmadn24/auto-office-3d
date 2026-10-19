@@ -39,7 +39,7 @@ describe('Loop Controls — HALT GRAPH & resume dari checkpoint (PRD §3.2)', ()
 
     const events = new EventBus();
     const result = await runAutonomous(PROMPT, {
-      config: loadConfig(),
+      config: loadConfig({ MEMORY_DRIVER: 'memory' }),
       emit: events,
       control,
       runId,
@@ -72,7 +72,7 @@ describe('Loop Controls — HALT GRAPH & resume dari checkpoint (PRD §3.2)', ()
     });
 
     const result = await runAutonomous(PROMPT, {
-      config: loadConfig(),
+      config: loadConfig({ MEMORY_DRIVER: 'memory' }),
       emit: events,
       control,
       runId,

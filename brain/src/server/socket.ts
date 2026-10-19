@@ -5,8 +5,11 @@ import { createServer as createHttpsServer, type Server as HttpsServer } from 'n
 
 import { Server } from 'socket.io';
 
+import type { BaseCheckpointSaver } from '@langchain/langgraph';
+
 import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
+import type { RunStore } from '../durability/store';
 import { EventBus } from '../events';
 import { StripeSentinel, signStripePayload } from '../integrations';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
@@ -44,6 +47,10 @@ export interface SocketServerOptions {
   sentinel?: StripeSentinel;
   /** Vector memory — untuk menyertakan jumlah vektor per namespace di snapshot. */
   memory?: MemoryProvider;
+  /** Run history + event log durable (PRD v3.0 §4.4). */
+  store?: RunStore;
+  /** Checkpointer durable — run dari socket ikut bisa di-resume setelah restart. */
+  checkpointer?: BaseCheckpointSaver;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -79,6 +86,7 @@ export async function startSocketServer(
   const latestRetrievals: MemoryRetrievalPayload[] = [];
   let latestArtifacts: ArtifactsPayload | null = null;
   const memory = opts.memory;
+  const store = opts.store;
 
   // Setelah webhook Stripe diterima → siarkan revenue metrics yang sudah diperbarui.
   function broadcastRevenue(runId: string): void {
@@ -254,6 +262,11 @@ export async function startSocketServer(
         tokenBudget: config.tokenBudget,
         coverageThreshold: COVERAGE_THRESHOLD,
       },
+      durability: {
+        dataDir: config.dataDir,
+        memory: config.memoryDriver,
+        runs: store ? store.listRuns(20).length : 0,
+      },
       loopControls: { endpoint: 'control:halt | control:resume', state: control.snapshot() },
       socketPath: config.socketPath,
       history: bus.history.slice(-50),
@@ -272,6 +285,7 @@ export async function startSocketServer(
         retrieval: latestRetrievals.slice(-20),
         artifacts: latestArtifacts,
         memory: memorySizes,
+        runs: store ? store.listRuns(20) : [],
         control: control.snapshot(),
         generatedAt: new Date().toISOString(),
       };
@@ -355,6 +369,33 @@ export async function startSocketServer(
       ack?.({ ok: true, control: control.snapshot() });
     });
 
+    // Daftar run durable (post-restart) — Theater dapat menampilkan run history.
+    socket.on('run:list', (input: unknown, ack?: (r: unknown) => void) => {
+      const limit = (input as { limit?: unknown } | undefined)?.limit;
+      const runs = store?.listRuns(typeof limit === 'number' && limit > 0 ? limit : 20) ?? [];
+      ack?.({ ok: true, runs });
+    });
+
+    // Resume run yang terputus (mis. daemon/VPS restart) dari checkpoint SQLite.
+    socket.on('run:resume', async (input: unknown, ack?: (r: unknown) => void) => {
+      const runId = (input as { runId?: unknown } | undefined)?.runId;
+      if (typeof runId !== 'string' || runId.length === 0) {
+        ack?.({ ok: false, error: 'runId required' });
+        return;
+      }
+      ack?.({ ok: true, resuming: true, runId });
+      const { resumeAutonomous } = await import('../run');
+      void resumeAutonomous(runId, {
+        config,
+        emit: bus,
+        control,
+        checkpointer: opts.checkpointer,
+        store,
+      }).catch((err: unknown) => {
+        console.error(`[brain] resume ${runId} failed:`, err);
+      });
+    });
+
     socket.on('founder:directive', async (prompt: unknown, ack?: (r: unknown) => void) => {
       if (typeof prompt !== 'string' || prompt.trim().length === 0) {
         ack?.({ ok: false, error: 'empty directive' });
@@ -362,7 +403,13 @@ export async function startSocketServer(
       }
       ack?.({ ok: true, queued: true });
       const { runAutonomous } = await import('../run');
-      void runAutonomous(prompt, { config, emit: bus, control }).catch((err: unknown) => {
+      void runAutonomous(prompt, {
+        config,
+        emit: bus,
+        control,
+        checkpointer: opts.checkpointer,
+        store,
+      }).catch((err: unknown) => {
         console.error('[brain] autonomous run failed:', err);
       });
     });

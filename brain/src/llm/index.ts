@@ -10,7 +10,7 @@ export function createLLM(config: Config): LLMProvider {
     if (!config.anthropicApiKey) {
       throw new Error('LLM_DRIVER=anthropic but ANTHROPIC_API_KEY is missing');
     }
-    return new AnthropicLLM(config.anthropicApiKey, config.model);
+    return new AnthropicLLM(config.anthropicApiKey, config.model, config.anthropicBaseUrl);
   }
   return new StubLLM();
 }

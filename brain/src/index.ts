@@ -1,4 +1,6 @@
 import { loadConfig } from './config';
+import { createCheckpointer, openOfficeDb, RunStore } from './durability/store';
+import { ensureDataDir } from './durability/paths';
 import { EventBus } from './events';
 import { StripeSentinel } from './integrations';
 import { createMemory } from './memory';
@@ -16,14 +18,29 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
   const sentinel = new StripeSentinel(config.stripeWebhookSecret);
+
+  // Durability (PRD v3.0 §2.1): seluruh state di satu folder DATA_DIR —
+  // memory LanceDB + office.db (checkpoint, run history, event log).
+  const paths = ensureDataDir(config.dataDir);
+  const db = openOfficeDb(paths.dbPath);
+  const store = new RunStore(db);
+  const checkpointer = createCheckpointer(paths.dbPath);
+  store.attach(bus);
+  const interrupted = store.recoverInterrupted();
+
   // Vector memory dibuat sekali, di-seed, lalu dibagikan ke socket server
   // (untuk jumlah vektor di snapshot) dan tiap run otonom.
   const memory = createMemory(config);
   await seedMemory(memory);
-  const server = await startSocketServer(config, bus, { sentinel, memory });
+  const server = await startSocketServer(config, bus, {
+    sentinel,
+    memory,
+    store,
+    checkpointer,
+  });
 
   console.log('┌──────────────────────────────────────────────────────────────┐');
-  console.log('│  AutoOffice3D · THE BRAIN daemon v1.6                        │');
+  console.log('│  AutoOffice3D · THE BRAIN daemon v1.7                        │');
   console.log('└──────────────────────────────────────────────────────────────┘');
   console.log(`  socket       ${server.url}`);
   console.log(`  health       http://localhost:${server.port}/health`);
@@ -34,6 +51,12 @@ async function main(): Promise<void> {
   console.log(
     `  guardrails   breaker=${config.maxIterations}x · token budget=${formatTokens(config.tokenBudget)}`,
   );
+  console.log(`  data dir     ${paths.root} (office.db + lancedb/)`);
+  if (interrupted.length > 0) {
+    console.log(
+      `  recovery     ${interrupted.length} run terputus ditandai interrupted → ${interrupted.join(', ')}`,
+    );
+  }
 
   const prompt = process.argv[2] ?? process.env.FOUNDER_PROMPT;
   if (prompt) {
@@ -44,6 +67,8 @@ async function main(): Promise<void> {
       emit: bus,
       sentinel,
       memory,
+      store,
+      checkpointer,
     });
     console.log(
       `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
@@ -56,6 +81,7 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     console.log('\n  shutting down brain …');
     await server.close();
+    db.close();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

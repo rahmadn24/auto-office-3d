@@ -1,17 +1,26 @@
+import { resolve } from 'node:path';
+
 import { z } from 'zod';
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4800),
   SOCKET_PATH: z.string().default('/brain-server'),
 
+  // Durability (PRD v3.0 §2.1) — satu folder untuk seluruh state durable.
+  DATA_DIR: z.string().default('data'),
+
   // LLM
   LLM_DRIVER: z.enum(['auto', 'stub', 'anthropic']).default('auto'),
   ANTHROPIC_API_KEY: z.string().optional(),
+  /** Override endpoint Anthropic-compatible — mis. gateway lokal 9router (http://localhost:20128/v1). */
+  ANTHROPIC_BASE_URL: z.string().optional(),
   MODEL: z.string().default('claude-3-5-sonnet-latest'),
 
   // Memory
-  MEMORY_DRIVER: z.enum(['auto', 'memory', 'pinecone']).default('auto'),
+  MEMORY_DRIVER: z.enum(['auto', 'memory', 'lancedb', 'pinecone']).default('auto'),
   OPENAI_API_KEY: z.string().optional(),
+  /** Override endpoint embeddings (default https://api.openai.com/v1). */
+  OPENAI_BASE_URL: z.string().optional(),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   PINECONE_API_KEY: z.string().optional(),
   PINECONE_HOST: z.string().optional(),
@@ -42,11 +51,15 @@ export type RawEnv = z.input<typeof EnvSchema>;
 export interface Config {
   port: number;
   socketPath: string;
+  /** Folder state durable (absolut) — lancedb/ + office.db. */
+  dataDir: string;
   llmDriver: 'stub' | 'anthropic';
   anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
   model: string;
-  memoryDriver: 'memory' | 'pinecone';
+  memoryDriver: 'memory' | 'lancedb' | 'pinecone';
   openaiApiKey?: string;
+  openaiBaseUrl?: string;
   embeddingModel: string;
   pineconeApiKey?: string;
   pineconeHost?: string;
@@ -87,7 +100,7 @@ export function loadConfig(
     e.MEMORY_DRIVER === 'auto'
       ? e.PINECONE_API_KEY && e.PINECONE_HOST
         ? 'pinecone'
-        : 'memory'
+        : 'lancedb'
       : e.MEMORY_DRIVER;
   const sandboxDriver =
     e.SANDBOX_DRIVER === 'auto' ? (e.E2B_API_KEY ? 'e2b' : 'local') : e.SANDBOX_DRIVER;
@@ -105,11 +118,14 @@ export function loadConfig(
   return {
     port: e.PORT,
     socketPath: e.SOCKET_PATH,
+    dataDir: resolve(e.DATA_DIR),
     llmDriver,
     anthropicApiKey: e.ANTHROPIC_API_KEY,
+    anthropicBaseUrl: e.ANTHROPIC_BASE_URL,
     model: e.MODEL,
     memoryDriver,
     openaiApiKey: e.OPENAI_API_KEY,
+    openaiBaseUrl: e.OPENAI_BASE_URL,
     embeddingModel: e.EMBEDDING_MODEL,
     pineconeApiKey: e.PINECONE_API_KEY,
     pineconeHost: e.PINECONE_HOST,
