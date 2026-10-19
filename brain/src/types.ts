@@ -259,6 +259,58 @@ export interface BriefPayload {
   timestamp: string;
 }
 
+/* ───────── Fase 11 — CS Agent: Omnichannel + Closing (PRD §3.5) ───────── */
+
+export const LEAD_SOURCES = ['widget', 'whatsapp', 'email'] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'deal', 'lost'] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+/** Quote yang diajukan CS (dibuat saat closing flow berjalan). */
+export interface LeadQuote {
+  amount: number;
+  currency: 'USD' | 'IDR';
+  productName: string;
+  checkoutUrl: string;
+  contractUrl: string;
+}
+
+/**
+ * Lead store bersama (mini-CRM, PRD §3.5): ditulis Marketer saat peminat
+ * terdeteksi, dibaca & ditindaklanjuti CS Agent. Durable di SQLite `office.db`.
+ */
+export interface Lead {
+  id: string;
+  source: LeadSource;
+  /** Identitas channel: visitor id (widget), nomor WA, atau email. */
+  contact: string;
+  name: string;
+  interest: string;
+  status: LeadStatus;
+  conversationId: string;
+  nextFollowupAt: string | null;
+  /** Berapa kali follow-up otomatis sudah dikirim (3x tanpa balasan → lost). */
+  followupsSent: number;
+  quote: LeadQuote | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `lead:update` — siaran perubahan lead ke CS Inbox Theater (Fase 11). */
+export interface LeadUpdatePayload {
+  lead: Lead;
+  reason: 'created' | 'message' | 'status' | 'quote' | 'followup' | 'deal';
+  timestamp: string;
+}
+
+/** Ringkasan satu percakapan CS untuk daftar inbox. */
+export interface InboxEntry {
+  lead: Lead;
+  lastMessage: ChatTurnPayload | null;
+  messageCount: number;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

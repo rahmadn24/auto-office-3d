@@ -16,7 +16,11 @@
  *   7. Payment (Fase 9): buka /terminal → tombol "Simulate Payment" →
  *      observer mendengar `milestone:first_sale` (provider stub) → banner
  *      CELEBRATE "FIRST CUSTOMER ACQUIRED" muncul di UI.
- *   8. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
+ *   8. Event Replay (Fase 10): playback run durable di tab /pipeline.
+ *   9. CS Agent (Fase 11): widget di /demo/widget → `cs:message` + lead baru →
+ *      CS Inbox /inbox → tombol quote → `payment:link_created` + kontrak PDF →
+ *      bayar via /demo/pay → `lead:update` deal + badge DEAL di UI.
+ *  10. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
  *
  * Env: E2E_BRAIN_PORT (4899), E2E_THEATER_PORT (3101), E2E_TIMEOUT_MS (150000),
  *      E2E_VERBOSE=0 untuk senyapkan log service.
@@ -132,6 +136,9 @@ async function main() {
     const statusEvents = [];
     const pmReplies = [];
     const milestones = [];
+    const leadUpdates = [];
+    const csMessages = [];
+    const paymentLinks = [];
     const observer = io(`http://127.0.0.1:${BRAIN_PORT}`, {
       path: '/brain-server',
       transports: ['websocket'],
@@ -146,6 +153,9 @@ async function main() {
       observer.on('agent:status_update', (payload) => statusEvents.push(payload));
       observer.on('pm:reply', (payload) => pmReplies.push(payload));
       observer.on('milestone:first_sale', (payload) => milestones.push(payload));
+      observer.on('lead:update', (payload) => leadUpdates.push(payload));
+      observer.on('cs:message', (payload) => csMessages.push(payload));
+      observer.on('payment:link_created', (payload) => paymentLinks.push(payload));
 
       await page.goto(`http://127.0.0.1:${THEATER_PORT}`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(
@@ -334,6 +344,118 @@ async function main() {
       console.log(
         `✓ event replay — ${replayAck.total} event (start → event* → end) + timeline PLAYBACK DONE di UI`,
       );
+
+      // ── CS Agent (Fase 11): widget → lead → quote/kontrak → bayar → deal ───
+      await page.goto(`http://127.0.0.1:${BRAIN_PORT}/demo/widget`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#ao3d-widget-visitor')?.textContent?.startsWith('cs:widget:') ??
+          false,
+        undefined,
+        { timeout: 15_000 },
+      );
+      const widgetConversation = await page.evaluate(() => window.AO3DWidget.conversationId());
+      const leadsBefore = leadUpdates.length;
+      const csMessagesBefore = csMessages.length;
+      await page.evaluate(() => window.AO3DWidget.send('Halo, produk ini apa?'));
+      console.log(`» widget mengirim pesan (${widgetConversation})`);
+
+      await page.waitForFunction(
+        () => document.querySelectorAll('.ao3d-bubble-agent').length >= 2,
+        undefined,
+        { timeout: 20_000 },
+      );
+      const csDeadline = Date.now() + 20_000;
+      while (
+        !leadUpdates
+          .slice(leadsBefore)
+          .some((u) => u?.lead?.conversationId === widgetConversation && u?.reason === 'created') &&
+        Date.now() < csDeadline
+      ) {
+        await sleep(250);
+      }
+      const widgetLead = leadUpdates
+        .slice(leadsBefore)
+        .find((u) => u?.lead?.conversationId === widgetConversation)?.lead;
+      if (!widgetLead) {
+        throw new Error('tidak ada lead:update (created) setelah pesan widget');
+      }
+      const widgetReply = csMessages
+        .slice(csMessagesBefore)
+        .find((t) => t?.conversationId === widgetConversation && t?.role === 'agent');
+      if (!widgetReply?.message) {
+        throw new Error('tidak ada cs:message balasan agent untuk percakapan widget');
+      }
+      console.log(
+        `✓ widget → lead ${widgetLead.id} (${widgetLead.source}) + balasan CS "${widgetReply.message.slice(0, 40)}…"`,
+      );
+
+      // CS Inbox: buka tab, pastikan lead widget tampil & terpilih.
+      await page.goto(`http://127.0.0.1:${THEATER_PORT}/inbox`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForFunction(
+        () => document.body.innerText.includes('SOCKET.IO CONNECTED'),
+        undefined,
+        { timeout: 30_000 },
+      );
+      await page.waitForFunction(
+        // `innerText` mengikuti text-transform CSS (conversation id tampil uppercase).
+        (conversation) =>
+          document.body.innerText.toLowerCase().includes(conversation.toLowerCase()),
+        widgetConversation,
+        { timeout: 20_000 },
+      );
+      console.log('✓ CS Inbox menampilkan lead widget (auto-select)');
+
+      // Quote manual dari inbox → payment link + kontrak PDF.
+      const linksBefore = paymentLinks.length;
+      await page.getByRole('button', { name: /kirim quote/i }).click();
+      const quoteDeadline = Date.now() + 20_000;
+      while (paymentLinks.length <= linksBefore && Date.now() < quoteDeadline) await sleep(250);
+      const link = paymentLinks.at(-1);
+      if (!link || link.leadId !== widgetLead.id || link.provider !== 'stub') {
+        throw new Error(`payment:link_created tidak sesuai: ${JSON.stringify(link)}`);
+      }
+      if (!link.contractUrl?.includes(`/cs/contracts/${widgetLead.id}.pdf`)) {
+        throw new Error(`contractUrl tidak menunjuk kontrak lead: ${link.contractUrl}`);
+      }
+      const pdfRes = await fetch(link.contractUrl);
+      const pdf = Buffer.from(await pdfRes.arrayBuffer());
+      if (pdfRes.status !== 200 || pdf.subarray(0, 8).toString('latin1') !== '%PDF-1.4') {
+        throw new Error(
+          `kontrak PDF bukan PDF 1.4 (HTTP ${pdfRes.status}): ${pdf.subarray(0, 8).toString('latin1')}`,
+        );
+      }
+      console.log(`✓ quote terkirim — payment link ${link.currency} ${link.amount} + kontrak PDF`);
+
+      // Bayar di halaman checkout demo (driver stub) → webhook internal → deal.
+      const orderId = new URL(link.checkoutUrl).searchParams.get('order_id') ?? '';
+      if (!orderId) throw new Error(`checkoutUrl tanpa order_id: ${link.checkoutUrl}`);
+      const payRes = await fetch(`http://127.0.0.1:${BRAIN_PORT}/demo/pay`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ order_id: orderId }).toString(),
+      });
+      if (!payRes.ok) throw new Error(`POST /demo/pay gagal: HTTP ${payRes.status}`);
+
+      const dealDeadline = Date.now() + 20_000;
+      for (;;) {
+        const deal = leadUpdates.find(
+          (u) => u?.lead?.id === widgetLead.id && u?.lead?.status === 'deal',
+        );
+        if (deal) break;
+        if (Date.now() > dealDeadline) {
+          throw new Error('tidak ada lead:update deal setelah pembayaran stub');
+        }
+        await sleep(250);
+      }
+      await page.waitForFunction(() => /deal/i.test(document.body.innerText), undefined, {
+        timeout: 10_000,
+      });
+      console.log('✓ pembayaran stub → lead deal + badge DEAL tampil di CS Inbox');
     } finally {
       observer.close();
       await browser.close().catch(() => {});

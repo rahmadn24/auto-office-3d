@@ -68,6 +68,7 @@ export interface HealthProbe {
 /* ────────────────────── Email (PRD §3.4 welcome) ────────────────────── */
 
 export interface EmailDriver {
+  readonly driver: string;
   send(input: {
     to: string;
     subject: string;

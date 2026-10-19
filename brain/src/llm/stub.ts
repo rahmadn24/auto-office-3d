@@ -35,7 +35,9 @@ export class StubLLM implements LLMProvider {
           ? codeBundle(request)
           : request.task === 'brief'
             ? briefDraft(request)
-            : briefingReply(request);
+            : request.task === 'cs'
+              ? csReply(request)
+              : briefingReply(request);
     const inputTokens =
       estimateTokens(request.prompt) + estimateTokens(JSON.stringify(request.context));
     const outputTokens = estimateTokens(text);
@@ -146,4 +148,30 @@ function briefingReply(request: LLMRequest): string {
 function briefDraft(request: LLMRequest): string {
   const transcript = request.prompt.trim() || (request.context.thread ?? '');
   return JSON.stringify(heuristicBriefDraft(transcript), null, 2);
+}
+
+/**
+ * Balasan CS deterministik (Fase 11) — jawab pertanyaan client + tawarkan langkah
+ * berikutnya; sebut memori ter-recall bila ada sehingga kutipan tetap terlihat.
+ */
+function csReply(request: LLMRequest): string {
+  const message = request.prompt.trim().replace(/\s+/g, ' ');
+  const short = message.length > 96 ? `${message.slice(0, 96)}…` : message;
+  const product = request.context.projectName || 'produk kami';
+  const buyingIntent =
+    /(harga|price|berapa|biaya|invoice|bayar|checkout|beli|deal|langganan)/i.test(message);
+  const lines = [
+    `Terima kasih atas pesannya — "${short}".`,
+    buyingIntent
+      ? `Untuk ${product}, paket standar mulai $29 (sekali bayar) dan sudah termasuk akses penuh + pembaruan. Saya siapkan quote resmi beserta kontraknya untuk Anda.`
+      : `Tim kami siap membantu soal ${product} — mulai dari cara pakai, integrasi, sampai pembelian.`,
+    '',
+    'Ada pertanyaan lain sebelum kita lanjut?',
+  ];
+  const recalled = request.context.retrieved ?? [];
+  const firstHit = recalled[0];
+  if (firstHit) {
+    lines.push('', `Catatan internal: ${firstHit.slice(0, 160)}`);
+  }
+  return lines.join('\n');
 }

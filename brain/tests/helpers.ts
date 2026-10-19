@@ -1,4 +1,5 @@
 import { EventBus } from '../src/events';
+import type { LeadsStore } from '../src/cs/leads';
 import { buildOrchestrator } from '../src/graph/build';
 import { type GraphDeps } from '../src/graph/nodes';
 import { StubLLM } from '../src/llm/stub';
@@ -41,6 +42,8 @@ export class FakeSandbox implements SandboxDriver {
 export interface DepsOverrides {
   sandbox?: SandboxDriver;
   budget?: TokenBudget;
+  /** Fase 11: leads store — node Marketing menulis handoff lead ke CS Inbox. */
+  leads?: LeadsStore;
 }
 
 export function makeDeps(overrides: DepsOverrides = {}): {
@@ -56,6 +59,7 @@ export function makeDeps(overrides: DepsOverrides = {}): {
     sandbox: overrides.sandbox ?? new LocalSandbox(60_000),
     emit: bus,
     budget,
+    ...(overrides.leads ? { leads: overrides.leads } : {}),
   };
   return { deps, bus, budget };
 }

@@ -1,4 +1,5 @@
 import { GraphHaltedError, type RunControl } from '../control';
+import type { LeadsStore } from '../cs/leads';
 import { diffArtifacts, diffSummary } from '../diff';
 import { EventBus, type Emitter } from '../events';
 import type {
@@ -46,6 +47,8 @@ export interface GraphDeps {
   email?: EmailDriver;
   /** Payment Sentinel multi-provider (stripe/midtrans/stub) — PRD §3.4 Fase 9. */
   payment?: PaymentProvider;
+  /** Leads store bersama (Fase 11) — handoff Marketer → CS Inbox (PRD §3.4→§3.5). */
+  leads?: LeadsStore;
 }
 
 interface EmitOpts {
@@ -555,6 +558,37 @@ export function growthNode(deps: GraphDeps) {
       `${socialSummary} · listening for payment webhook`,
       { zone: 'marketing_studio' },
     );
+
+    // 1.5) Leads Handoff (PRD §3.4 → §3.5): interaksi/peminat yang terdeteksi dari
+    // kampanye ditulis ke leads store bersama — CS Agent yang menindaklanjuti.
+    // Id deterministik per run → resume tidak menduplikasi lead.
+    if (deps.leads) {
+      const interest = `Kampanye: ${hook.slice(0, 110)}`;
+      const nextFollowupAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      const detected: Array<{ source: 'widget' | 'email'; contact: string; name: string }> = [
+        { source: 'widget', contact: `visitor-${state.runId}`, name: 'Widget Visitor' },
+        { source: 'email', contact: `lead+${state.runId}@demo.local`, name: 'Inbound Lead' },
+      ];
+      for (const [index, item] of detected.entries()) {
+        const lead = deps.leads.createLead({
+          id: `lead_${state.runId}_${index + 1}`,
+          source: item.source,
+          contact: item.contact,
+          name: item.name,
+          interest,
+          nextFollowupAt,
+        });
+        deps.emit.lead?.({ lead, reason: 'created', timestamp: new Date().toISOString() });
+      }
+      emitStatus(
+        deps,
+        state.runId,
+        'marketing_agent',
+        'marketing',
+        `LEADS HANDOFF · ${detected.length} peminat masuk leads store → CS Agent menindaklanjuti`,
+        { zone: 'marketing_studio' },
+      );
+    }
 
     // 2) Payment Sentinel (PRD §3.4) — transaksi pertama (stub demo: $29.00 ARR;
     // gateway nyata: webhook live). Driver aktif yang menentukan format event.

@@ -114,6 +114,7 @@ export class StubSentinel extends BasePaymentSentinel implements DemoPaymentSurf
       customer: { city: 'Jakarta', country: 'ID', maskedEmail: 'b***@demo.local' },
       timestamp: nowIso(),
       label: `${notif.transaction_status ?? 'settlement'} · ${notif.payment_type ?? 'demo'} · ${notif.order_id}`,
+      leadId: link.leadId,
     };
   }
 

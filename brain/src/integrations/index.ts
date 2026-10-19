@@ -20,6 +20,8 @@ export function createDeploy(config: Config): DeployDriver {
     return new DockerDeploy({
       publishHost: config.deployPublishHost,
       probeHost: config.deployProbeHost,
+      widgetUrl: config.csWidgetUrl,
+      widgetSocketPath: config.socketPath,
     });
   }
   return new LocalVercel();

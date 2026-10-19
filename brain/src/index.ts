@@ -1,8 +1,10 @@
 import { BriefingService } from './briefing';
 import { loadConfig } from './config';
+import { LeadsStore } from './cs/leads';
 import { createCheckpointer, openOfficeDb, RunStore } from './durability/store';
 import { ensureDataDir } from './durability/paths';
 import { EventBus } from './events';
+import { createEmail } from './integrations';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
 import { createPayment } from './payments';
@@ -36,9 +38,16 @@ async function main(): Promise<void> {
   const memory = createMemory(config);
   await seedMemory(memory);
 
+  const llm = createLLM(config);
+  const email = createEmail(config);
+
   // Fase 8 — Briefing Room: percakapan Founder↔PM (LLM task `briefing`),
   // durable di namespace `briefing`, GO → compile brief → founder:directive.
-  const briefing = new BriefingService({ memory, llm: createLLM(config) });
+  const briefing = new BriefingService({ memory, llm });
+
+  // Fase 11 — CS Agent: leads store bersama (mini-CRM) + omnichannel inbox.
+  // Run otonom ikut menerima leads store → node Marketing menulis handoff lead.
+  const leads = new LeadsStore(db);
 
   const server = await startSocketServer(config, bus, {
     payment,
@@ -46,7 +55,26 @@ async function main(): Promise<void> {
     store,
     checkpointer,
     briefing,
+    leads,
+    llm,
+    email,
   });
+
+  // Follow-up engine (PRD §3.5): sapu berkala lead yang jatuh tempo → CS kirim
+  // tindak lanjut via channel asal. 0 = matikan scheduler (mis. e2e deterministik).
+  let followupTimer: NodeJS.Timeout | null = null;
+  if (server.cs && config.csFollowupMs > 0) {
+    followupTimer = setInterval(() => {
+      void server.cs?.sweep().then((result) => {
+        if (result.sent > 0 || result.lost > 0) {
+          console.log(
+            `[cs] follow-up sweep · ${result.checked} lead dicek · ${result.sent} terkirim (${result.templates} template) · ${result.lost} lost`,
+          );
+        }
+      });
+    }, config.csFollowupMs);
+    followupTimer.unref();
+  }
 
   console.log('┌──────────────────────────────────────────────────────────────┐');
   console.log(`│  AutoOffice3D · THE BRAIN daemon v${BRAIN_VERSION}                        │`);
@@ -61,6 +89,9 @@ async function main(): Promise<void> {
   }
   console.log(
     `  drivers      llm=${config.llmDriver} memory=${config.memoryDriver} sandbox=${config.sandboxDriver} deploy=${config.deployDriver} social=${config.socialDriver}`,
+  );
+  console.log(
+    `  cs agent     whatsapp=${config.whatsappDriver} · follow-up tiap ${Math.round(config.csFollowupMs / 1000)}s · widget ${config.csWidgetUrl}/demo/widget`,
   );
   console.log(
     `  guardrails   breaker=${config.maxIterations}x · token budget=${formatTokens(config.tokenBudget)}`,
@@ -83,6 +114,7 @@ async function main(): Promise<void> {
       memory,
       store,
       checkpointer,
+      leads,
     });
     console.log(
       `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
@@ -94,6 +126,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     console.log('\n  shutting down brain …');
+    if (followupTimer) clearInterval(followupTimer);
     await server.close();
     db.close();
     process.exit(0);

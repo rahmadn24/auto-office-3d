@@ -15,6 +15,11 @@ export interface PresetRenderInput {
   tagline?: string;
   pricing?: string;
   runId?: string;
+  /**
+   * Widget channel CS (Fase 11) — halaman produk menyisipkan widget yang
+   * terhubung ke Brain lewat socket (visitor bisa chat dengan CS Agent).
+   */
+  widget?: { url: string; socketPath?: string };
 }
 
 export interface RenderedPresetStack {

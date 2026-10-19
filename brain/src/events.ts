@@ -3,6 +3,7 @@ import type {
   ArtifactsPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  LeadUpdatePayload,
   MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
@@ -36,6 +37,8 @@ export interface Emitter {
   social?(payload: SocialPostPayload): void;
   retrieval?(payload: MemoryRetrievalPayload): void;
   artifacts?(payload: ArtifactsPayload): void;
+  /** Fase 11 — CS Agent: perubahan lead / handoff Marketer → CS Inbox. */
+  lead?(payload: LeadUpdatePayload): void;
 }
 
 /** Event bus in-process — Socket.io (dan test) tinggal berlangganan di sini. */
@@ -47,12 +50,14 @@ export class EventBus implements Emitter {
   private socialListeners: Array<(p: SocialPostPayload) => void> = [];
   private retrievalListeners: Array<(p: MemoryRetrievalPayload) => void> = [];
   private artifactsListeners: Array<(p: ArtifactsPayload) => void> = [];
+  private leadListeners: Array<(p: LeadUpdatePayload) => void> = [];
   readonly history: AgentStatusPayload[] = [];
   readonly milestones: FirstSalePayload[] = [];
   readonly deployments: DeployUpdatePayload[] = [];
   readonly revenues: RevenueUpdatePayload[] = [];
   readonly socialPosts: SocialPostPayload[] = [];
   readonly retrievals: MemoryRetrievalPayload[] = [];
+  readonly leadUpdates: LeadUpdatePayload[] = [];
 
   onAgent(fn: (p: AgentStatusPayload) => void): () => void {
     this.listeners.push(fn);
@@ -103,6 +108,13 @@ export class EventBus implements Emitter {
     };
   }
 
+  onLead(fn: (p: LeadUpdatePayload) => void): () => void {
+    this.leadListeners.push(fn);
+    return () => {
+      this.leadListeners = this.leadListeners.filter((l) => l !== fn);
+    };
+  }
+
   agent(payload: AgentStatusPayload): void {
     this.history.push(payload);
     for (const fn of this.listeners) fn(payload);
@@ -135,6 +147,11 @@ export class EventBus implements Emitter {
 
   artifacts(payload: ArtifactsPayload): void {
     for (const fn of this.artifactsListeners) fn(payload);
+  }
+
+  lead(payload: LeadUpdatePayload): void {
+    this.leadUpdates.push(payload);
+    for (const fn of this.leadListeners) fn(payload);
   }
 
   /** Helper: membangun payload PRD §5.1 dari ringkasan aksi agen. */

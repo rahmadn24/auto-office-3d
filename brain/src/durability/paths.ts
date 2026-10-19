@@ -17,6 +17,11 @@ export interface DataPaths {
   dbPath: string;
 }
 
+/** Folder kontrak PDF CS (Fase 11) — berada di dalam DATA_DIR. */
+export function contractsDir(dataDir: string): string {
+  return join(resolve(dataDir), 'contracts');
+}
+
 export function dataPaths(dataDir: string): DataPaths {
   const root = resolve(dataDir);
   return {

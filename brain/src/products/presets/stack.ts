@@ -1,3 +1,4 @@
+import { widgetSnippet } from '../../cs/widget';
 import type { PresetRenderInput, ProductPresetId, RenderedPresetStack } from './types';
 
 /**
@@ -18,6 +19,8 @@ export interface DemoMeta {
   pricing: string;
   runId: string;
   generatedBy: 'AutoOffice3D';
+  /** Widget channel CS (Fase 11) — disisipkan pageShell di halaman produk. */
+  widget?: { url: string; socketPath?: string };
 }
 
 export interface StackSpec {
@@ -43,6 +46,7 @@ export function metaFor(input: PresetRenderInput, preset: ProductPresetId): Demo
     pricing: input.pricing?.trim() || '$29/mo',
     runId: input.runId ?? 'demo',
     generatedBy: 'AutoOffice3D',
+    ...(input.widget ? { widget: input.widget } : {}),
   };
 }
 
@@ -92,6 +96,9 @@ const STYLE = `
 /** Kerangka halaman demo — warna aksen mengikuti preset. */
 export function pageShell(meta: DemoMeta, accent: string, body: string): string {
   const style = STYLE.replaceAll('ACCENT', accent);
+  const widget = meta.widget
+    ? widgetSnippet(meta.widget.url, meta.widget.socketPath ?? '/brain-server')
+    : '';
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -107,6 +114,7 @@ export function pageShell(meta: DemoMeta, accent: string, body: string): string 
     body,
     '</main>',
     `<footer>Generated autonomously by AutoOffice3D · preset ${escapeHtml(meta.preset)} · run ${escapeHtml(meta.runId)}</footer>`,
+    ...(widget ? [widget] : []),
     '</body>',
     '</html>',
   ].join('\n');

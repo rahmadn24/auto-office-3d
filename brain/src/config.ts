@@ -54,6 +54,26 @@ const EnvSchema = z.object({
   X_BEARER_TOKEN: z.string().optional(),
   THREADS_ACCESS_TOKEN: z.string().optional(),
 
+  // Fase 11 — CS Agent (PRD §3.5): omnichannel inbox + follow-up + closing.
+  WHATSAPP_DRIVER: z.enum(['auto', 'stub', 'live']).default('auto'),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  /** Template HSM di luar jendela 24 jam (default template uji Meta). */
+  WHATSAPP_TEMPLATE_NAME: z.string().default('hello_world'),
+  /** Secret webhook email inbound (header `x-cs-inbound-secret`); kosong = demo. */
+  EMAIL_INBOUND_SECRET: z.string().optional(),
+  /** Interval scheduler sapu follow-up (ms). */
+  CS_FOLLOWUP_MS: z.coerce.number().int().nonnegative().default(60_000),
+  /** Jeda follow-up pertama setelah kontak/follow-up terakhir (ms). */
+  CS_FOLLOWUP_DELAY_MS: z.coerce.number().int().positive().default(600_000),
+  /** Batas follow-up otomatis sebelum lead ditandai lost. */
+  CS_MAX_FOLLOWUPS: z.coerce.number().int().positive().default(3),
+  /** Basis URL publik Brain untuk tautan kontrak (default http://localhost:PORT). */
+  CS_PUBLIC_BASE_URL: z.string().optional(),
+  /** Basis URL widget untuk halaman produk yang di-deploy (default = publik Brain). */
+  CS_WIDGET_URL: z.string().optional(),
+
   // Guardrails (PRD §3.2 & §6.4)
   MAX_ITERATIONS: z.coerce.number().int().positive().default(5),
   TOKEN_BUDGET: z.coerce.number().int().positive().default(250_000),
@@ -95,6 +115,17 @@ export interface Config {
   socialDriver: 'stub' | 'live';
   xBearerToken?: string;
   threadsAccessToken?: string;
+  whatsappDriver: 'stub' | 'live';
+  whatsappAccessToken?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappVerifyToken?: string;
+  whatsappTemplateName: string;
+  emailInboundSecret?: string;
+  csFollowupMs: number;
+  csFollowupDelayMs: number;
+  csMaxFollowups: number;
+  csPublicBaseUrl: string;
+  csWidgetUrl: string;
   maxIterations: number;
   tokenBudget: number;
 }
@@ -144,6 +175,17 @@ export function loadConfig(
   // `live` hanya karena token Threads ada; `live` = benar-benar posting ke X.
   const socialDriver =
     e.SOCIAL_DRIVER === 'auto' ? (e.X_BEARER_TOKEN ? 'live' : 'stub') : e.SOCIAL_DRIVER;
+  // CS Agent (Fase 11): WhatsApp Cloud API live hanya bila ketiga kredensial ada.
+  const whatsappDriver =
+    e.WHATSAPP_DRIVER === 'auto'
+      ? e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID && e.WHATSAPP_VERIFY_TOKEN
+        ? 'live'
+        : 'stub'
+      : e.WHATSAPP_DRIVER;
+  const csPublicBaseUrl = (e.CS_PUBLIC_BASE_URL ?? `http://localhost:${e.PORT}`).replace(
+    /\/+$/,
+    '',
+  );
 
   // Fail-fast: driver produksi dipaksa eksplisit tapi kredensial kurang = salah
   // konfigurasi, bukan fallback diam-diam. Pesan menyebut env yang harus diisi.
@@ -174,6 +216,14 @@ export function loadConfig(
   }
   if (socialDriver === 'live' && !e.X_BEARER_TOKEN) {
     problems.push('SOCIAL_DRIVER=live butuh X_BEARER_TOKEN (integrasi Threads belum tersedia)');
+  }
+  if (
+    whatsappDriver === 'live' &&
+    !(e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID && e.WHATSAPP_VERIFY_TOKEN)
+  ) {
+    problems.push(
+      'WHATSAPP_DRIVER=live butuh WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_VERIFY_TOKEN',
+    );
   }
   if (problems.length > 0) {
     throw new Error(`Invalid environment configuration — ${problems.join('; ')}`);
@@ -212,6 +262,17 @@ export function loadConfig(
     socialDriver,
     xBearerToken: e.X_BEARER_TOKEN,
     threadsAccessToken: e.THREADS_ACCESS_TOKEN,
+    whatsappDriver,
+    whatsappAccessToken: e.WHATSAPP_ACCESS_TOKEN,
+    whatsappPhoneNumberId: e.WHATSAPP_PHONE_NUMBER_ID,
+    whatsappVerifyToken: e.WHATSAPP_VERIFY_TOKEN,
+    whatsappTemplateName: e.WHATSAPP_TEMPLATE_NAME,
+    emailInboundSecret: e.EMAIL_INBOUND_SECRET,
+    csFollowupMs: e.CS_FOLLOWUP_MS,
+    csFollowupDelayMs: e.CS_FOLLOWUP_DELAY_MS,
+    csMaxFollowups: e.CS_MAX_FOLLOWUPS,
+    csPublicBaseUrl,
+    csWidgetUrl: (e.CS_WIDGET_URL ?? csPublicBaseUrl).replace(/\/+$/, ''),
     maxIterations: e.MAX_ITERATIONS,
     tokenBudget: e.TOKEN_BUDGET,
   };

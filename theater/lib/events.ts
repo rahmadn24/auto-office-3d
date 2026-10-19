@@ -366,3 +366,83 @@ export function parseReplayFrame(raw: unknown): ContractParse<ReplayFramePayload
   if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
   return { ok: true, payload: parsed.data };
 }
+
+/* ───────── Fase 11 — CS Agent: lead & closing (paritas brain/src/server/contract.ts) ───────── */
+
+export const LEAD_SOURCES = ['widget', 'whatsapp', 'email'] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'deal', 'lost'] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export const LeadQuoteSchema = z.object({
+  amount: z.number().positive(),
+  currency: z.enum(['USD', 'IDR']),
+  productName: z.string().min(1),
+  checkoutUrl: z.string().min(1),
+  contractUrl: z.string().min(1),
+});
+export type LeadQuote = z.infer<typeof LeadQuoteSchema>;
+
+/** Lead store bersama (mini-CRM) — Marketer menulis, CS menindaklanjuti. */
+export const LeadSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(LEAD_SOURCES),
+  contact: z.string().min(1),
+  name: z.string(),
+  interest: z.string(),
+  status: z.enum(LEAD_STATUSES),
+  conversationId: z.string().min(1),
+  nextFollowupAt: z.string().nullable(),
+  followupsSent: z.number().int().nonnegative(),
+  quote: LeadQuoteSchema.nullable(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+export type Lead = z.infer<typeof LeadSchema>;
+
+/** `lead:update` — sinkronisasi CS Inbox (lead baru / perubahan status / follow-up). */
+export const LeadUpdateSchema = z.object({
+  lead: LeadSchema,
+  reason: z.enum(['created', 'message', 'status', 'quote', 'followup', 'deal']),
+  timestamp: z.string().min(1),
+});
+export type LeadUpdatePayload = z.infer<typeof LeadUpdateSchema>;
+
+/** `payment:link_created` — payment link + kontrak PDF siap dikirim (PRD §5.4). */
+export const PaymentLinkSchema = z.object({
+  leadId: z.string().min(1),
+  provider: z.enum(PAYMENT_PROVIDERS),
+  checkoutUrl: z.string().min(1),
+  amount: z.number().positive(),
+  currency: z.enum(['USD', 'IDR']),
+  contractUrl: z.string().optional(),
+  expiresAt: z.string().optional(),
+  timestamp: z.string().min(1),
+});
+export type PaymentLinkPayload = z.infer<typeof PaymentLinkSchema>;
+
+export function parseLead(raw: unknown): ContractParse<Lead> {
+  const parsed = LeadSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parseLeadUpdate(raw: unknown): ContractParse<LeadUpdatePayload> {
+  const parsed = LeadUpdateSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+export function parsePaymentLink(raw: unknown): ContractParse<PaymentLinkPayload> {
+  const parsed = PaymentLinkSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: issuesOf(parsed.error) };
+  return { ok: true, payload: parsed.data };
+}
+
+/** Ringkasan satu percakapan CS untuk daftar inbox (ack `cs:list` & snapshot). */
+export interface InboxEntry {
+  lead: Lead;
+  lastMessage: ChatTurnPayload | null;
+  messageCount: number;
+}

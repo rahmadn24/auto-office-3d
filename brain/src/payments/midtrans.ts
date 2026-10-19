@@ -239,6 +239,7 @@ export class MidtransSentinel extends BasePaymentSentinel {
       },
       timestamp: ts !== null ? new Date(ts).toISOString() : nowIso(),
       label: `${notif.transaction_status}${notif.fraud_status ? `/${notif.fraud_status}` : ''} · ${notif.payment_type ?? 'snap'} · ${eventId}`,
+      ...(notif.custom_field1 ? { leadId: notif.custom_field1 } : {}),
     };
   }
 

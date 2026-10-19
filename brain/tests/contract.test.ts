@@ -8,7 +8,10 @@ import {
   parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
+  parseLead,
+  parseLeadUpdate,
   parseMemoryRetrieval,
+  parsePaymentLink,
   parseReplayFrame,
   parseRevenueUpdate,
   parseRunRecord,
@@ -392,5 +395,76 @@ describe('kontrak run record & replay frame (Fase 10 — paritas theater)', () =
   });
   it('phase di luar start/event/end ditolak', () => {
     expect(parseReplayFrame({ ...validReplayFrame, phase: 'pause' }).ok).toBe(false);
+  });
+});
+
+/* ───── Fase 11 — fixture paritas CS Agent: lead & payment link (identik theater/tests/events.test.ts) ───── */
+
+const validLead = {
+  id: 'lead_run_x_1',
+  source: 'widget' as const,
+  contact: 'visitor-abc',
+  name: 'Rina',
+  interest: 'Kampanye: invoice generator',
+  status: 'qualified' as const,
+  conversationId: 'cs:widget:visitor-abc',
+  nextFollowupAt: '2026-01-02T00:00:00.000Z',
+  followupsSent: 1,
+  quote: {
+    amount: 29,
+    currency: 'USD' as const,
+    productName: 'Invoice Generator',
+    checkoutUrl: 'https://brain.example/demo/checkout?order_id=stub_1',
+    contractUrl: 'https://brain.example/cs/contracts/lead_run_x_1.pdf',
+  },
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:05:00.000Z',
+};
+
+const validLeadUpdate = {
+  lead: validLead,
+  reason: 'quote' as const,
+  timestamp: '2026-01-01T00:05:00.000Z',
+};
+
+const validPaymentLink = {
+  leadId: 'lead_run_x_1',
+  provider: 'stub' as const,
+  checkoutUrl: 'https://brain.example/demo/checkout?order_id=stub_1',
+  amount: 29,
+  currency: 'USD' as const,
+  contractUrl: 'https://brain.example/cs/contracts/lead_run_x_1.pdf',
+  expiresAt: '2026-01-08T00:00:00.000Z',
+  timestamp: '2026-01-01T00:05:00.000Z',
+};
+
+describe('kontrak lead:update & payment:link_created (Fase 11 — paritas theater)', () => {
+  it('lead valid diterima; lead tanpa quote (null) juga valid', () => {
+    expect(parseLead(validLead).ok).toBe(true);
+    expect(parseLead({ ...validLead, quote: null, status: 'new' }).ok).toBe(true);
+  });
+  it('source/status di luar enum ditolak', () => {
+    expect(parseLead({ ...validLead, source: 'telegram' }).ok).toBe(false);
+    expect(parseLead({ ...validLead, status: 'spam' }).ok).toBe(false);
+  });
+  it('followupsSent negatif ditolak', () => {
+    expect(parseLead({ ...validLead, followupsSent: -1 }).ok).toBe(false);
+  });
+  it('lead:update valid diterima; reason tak dikenal ditolak', () => {
+    expect(parseLeadUpdate(validLeadUpdate).ok).toBe(true);
+    expect(parseLeadUpdate({ ...validLeadUpdate, reason: 'exploded' }).ok).toBe(false);
+  });
+  it('payment link valid diterima; amount nol / provider asing ditolak', () => {
+    expect(parsePaymentLink(validPaymentLink).ok).toBe(true);
+    expect(parsePaymentLink({ ...validPaymentLink, amount: 0 }).ok).toBe(false);
+    expect(parsePaymentLink({ ...validPaymentLink, provider: 'paypal' }).ok).toBe(false);
+  });
+  it('EventBus menyimpan leadUpdates + broadcast ke listener', () => {
+    const bus = new EventBus();
+    const seen: string[] = [];
+    bus.onLead((p) => seen.push(p.lead.id));
+    bus.lead(validLeadUpdate);
+    expect(seen).toEqual(['lead_run_x_1']);
+    expect(bus.leadUpdates).toHaveLength(1);
   });
 });

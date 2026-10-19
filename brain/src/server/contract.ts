@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { PaymentLinkPayload } from '../payments/provider';
 import { PAYMENT_PROVIDERS } from '../types';
 import type {
   AgentStatusPayload,
@@ -8,6 +9,8 @@ import type {
   ChatTurnPayload,
   DeployUpdatePayload,
   FirstSalePayload,
+  Lead,
+  LeadUpdatePayload,
   MemoryRetrievalPayload,
   RevenueUpdatePayload,
   SocialPostPayload,
@@ -337,4 +340,70 @@ export function parseReplayFrame(raw: unknown): ContractParse<ReplayFramePayload
   const parsed = ReplayFrameSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
   return { ok: true, payload: parsed.data as ReplayFramePayload };
+}
+
+/* ───────── Fase 11 — CS Agent: leads & closing (PRD §3.5/§5.4) ───────── */
+
+export const LEAD_SOURCES = ['widget', 'whatsapp', 'email'] as const;
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'deal', 'lost'] as const;
+
+export const LeadQuoteSchema = z.object({
+  amount: z.number().positive(),
+  currency: z.enum(['USD', 'IDR']),
+  productName: z.string().min(1),
+  checkoutUrl: z.string().min(1),
+  contractUrl: z.string().min(1),
+});
+
+/** Lead store bersama (mini-CRM) — Marketer menulis, CS menindaklanjuti. */
+export const LeadSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(LEAD_SOURCES),
+  contact: z.string().min(1),
+  name: z.string(),
+  interest: z.string(),
+  status: z.enum(LEAD_STATUSES),
+  conversationId: z.string().min(1),
+  nextFollowupAt: z.string().nullable(),
+  followupsSent: z.number().int().nonnegative(),
+  quote: LeadQuoteSchema.nullable(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+/** `lead:update` — sinkronisasi CS Inbox (lead baru / perubahan status / follow-up). */
+export const LeadUpdateSchema = z.object({
+  lead: LeadSchema,
+  reason: z.enum(['created', 'message', 'status', 'quote', 'followup', 'deal']),
+  timestamp: z.string().min(1),
+});
+
+/** `payment:link_created` — payment link + kontrak PDF siap kirim (PRD §5.4). */
+export const PaymentLinkSchema = z.object({
+  leadId: z.string().min(1),
+  provider: z.enum(PAYMENT_PROVIDERS),
+  checkoutUrl: z.string().min(1),
+  amount: z.number().positive(),
+  currency: z.enum(['USD', 'IDR']),
+  contractUrl: z.string().optional(),
+  expiresAt: z.string().optional(),
+  timestamp: z.string().min(1),
+});
+
+export function parseLead(raw: unknown): ContractParse<Lead> {
+  const parsed = LeadSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
+  return { ok: true, payload: parsed.data as Lead };
+}
+
+export function parseLeadUpdate(raw: unknown): ContractParse<LeadUpdatePayload> {
+  const parsed = LeadUpdateSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
+  return { ok: true, payload: parsed.data as LeadUpdatePayload };
+}
+
+export function parsePaymentLink(raw: unknown): ContractParse<PaymentLinkPayload> {
+  const parsed = PaymentLinkSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
+  return { ok: true, payload: parsed.data as PaymentLinkPayload };
 }
