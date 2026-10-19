@@ -14,7 +14,8 @@ export interface SandboxRequest {
   runId: string;
   /** Map path relatif → isi berkas (hasil codegen Dev Agent). */
   files: Record<string, string>;
-  timeoutMs: number;
+  /** Timeout eksekusi (ms) — opsional; driver memakai default-nya bila absen. */
+  timeoutMs?: number;
   /** Jalankan dengan `vitest run --coverage` (PRD §3.2 — target ≥ 90%). */
   coverage?: boolean;
 }

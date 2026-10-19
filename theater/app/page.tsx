@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 
-import { BrainBridge } from '../components/BrainBridge';
 import { DivisionSidebar } from '../components/overlays/DivisionSidebar';
 import { AgentStream } from '../components/overlays/AgentStream';
 import { CelebrationOverlay } from '../components/overlays/CelebrationOverlay';
@@ -30,7 +29,6 @@ const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
 export default function HomePage(): ReactNode {
   return (
     <AppShell>
-      <BrainBridge />
       <OfficeScene />
       <CelebrationOverlay />
       <PerfOverlay />

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 
+import { BrainBridge } from '@/components/BrainBridge';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,7 +20,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-surface font-body text-on-surface antialiased">{children}</body>
+      <body className="bg-surface font-body text-on-surface antialiased">
+        {/* Koneksi Brain dipasang sekali di root layout — bertahan lintas tab. */}
+        <BrainBridge />
+        {children}
+      </body>
     </html>
   );
 }

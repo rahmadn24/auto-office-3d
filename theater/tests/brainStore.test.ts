@@ -50,6 +50,7 @@ beforeEach(() => {
     bestLatencyMs: null,
     brainVersion: null,
     agents: {},
+    agentStatusMs: {},
     runStage: null,
     runId: null,
     tokens: 0,
@@ -84,6 +85,13 @@ describe('brainStore: applyStatus (diff update)', () => {
     expect(older).toBe(false);
     expect(useBrain.getState().agents.dev_agent?.timestamp).toBe('12:00:05.000');
     expect(useBrain.getState().eventCount).toBe(1);
+  });
+
+  it('status lewat tengah malam (rollover) tidak dianggap basi', () => {
+    useBrain.getState().applyStatus(status({ timestamp: '23:59:59.000' }));
+    const ok = useBrain.getState().applyStatus(status({ timestamp: '00:00:05.000' }));
+    expect(ok).toBe(true);
+    expect(useBrain.getState().agents.dev_agent?.timestamp).toBe('00:00:05.000');
   });
 
   it('beberapa agen tersimpan terpisah', () => {

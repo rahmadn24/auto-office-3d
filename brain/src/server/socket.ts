@@ -23,6 +23,7 @@ import type {
   SocialPostPayload,
 } from '../types';
 import type { MemoryProvider } from '../memory/provider';
+import { BRAIN_VERSION } from '../version';
 import {
   parseAgentStatus,
   parseArtifacts,
@@ -246,7 +247,7 @@ export async function startSocketServer(
   io.on('connection', (socket) => {
     socket.emit('system:hello', {
       service: 'brain',
-      version: '1.6',
+      version: BRAIN_VERSION,
       drivers: {
         llm: config.llmDriver,
         memory: config.memoryDriver,

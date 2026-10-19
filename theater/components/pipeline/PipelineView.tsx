@@ -318,7 +318,9 @@ function LoopControls(): ReactNode {
           max={10}
           value={breaker}
           onChange={(e) => setBreaker(Number(e.target.value))}
-          className="mt-1 w-full accent-[#ffb95f]"
+          disabled
+          title="Belum tersambung ke Brain (runtime config menyusul)"
+          className="mt-1 w-full accent-[#ffb95f] opacity-50"
         />
       </label>
 
@@ -329,7 +331,9 @@ function LoopControls(): ReactNode {
         <button
           type="button"
           onClick={() => setCrossRun((v) => !v)}
-          className="rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide transition-colors"
+          disabled
+          title="Belum tersambung ke Brain (runtime config menyusul)"
+          className="rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide transition-colors opacity-60"
           style={{
             borderColor: crossRun ? '#4edea3' : 'rgba(255,255,255,0.12)',
             color: crossRun ? '#4edea3' : '#94a3b8',
@@ -357,14 +361,15 @@ function LoopControls(): ReactNode {
           onClick={clearRetrievals}
           className="flex-1 rounded border border-white/12 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-[#f8fafc] transition-colors hover:bg-white/5"
         >
-          FlushState
+          Flush Retrievals
         </button>
         <button
           type="button"
           onClick={() => setGraphHalt(false)}
+          title="Melepas GRAPH LOCKED — melanjutkan graph yang di-halt (control:resume)"
           className="flex-1 rounded border border-[rgba(78,222,163,0.4)] px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-[#4edea3] transition-colors hover:bg-[rgba(78,222,163,0.1)]"
         >
-          Force QA Loop
+          Resume Graph
         </button>
       </div>
     </Panel>

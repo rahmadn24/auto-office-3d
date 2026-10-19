@@ -51,13 +51,21 @@ export function Confetti(): ReactNode {
     vis.current = MathUtils.damp(vis.current, active ? 1 : 0, 4, dt);
 
     if (!colored.current) {
-      colors.forEach((c, i) => m.setColorAt(i, c));
+      // Warna per-instance untuk SEMUA piece (sebelumnya hanya 6 pertama).
+      for (let i = 0; i < pieces.length; i += 1) {
+        m.setColorAt(i, colors[i % colors.length]!);
+      }
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
       colored.current = true;
     }
 
     const t = state.clock.elapsedTime;
     const visible = vis.current > 0.01;
+    if (!visible && !active) {
+      // Nonaktif penuh → skip 140 updateMatrix + upload instanceMatrix tiap frame.
+      m.visible = false;
+      return;
+    }
 
     for (let i = 0; i < pieces.length; i += 1) {
       const p = pieces[i];

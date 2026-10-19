@@ -128,6 +128,40 @@ describe('Stripe Webhook Sentinel endpoint (PRD §3.4)', () => {
 
     await srv.close();
   });
+
+  it('signature invalid → 401 tanpa memancarkan milestone (forged webhook ditolak)', async () => {
+    const bus = new EventBus();
+    const secret = 'whsec_http_bad';
+    const srv = await startSocketServer(
+      { ...loadConfig(), port: 0, socketPath: '/brain-hook', stripeWebhookSecret: secret },
+      bus,
+      { sentinel: new StripeSentinel(secret) },
+    );
+    const addr = srv.httpServer.address() as AddressInfo;
+    const url = `http://127.0.0.1:${addr.port}`;
+
+    const received: FirstSalePayload[] = [];
+    bus.onMilestone((p) => received.push(p));
+
+    const raw = JSON.stringify({
+      id: 'evt_forged',
+      type: 'checkout.session.completed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { amount_total: 2900, currency: 'usd', customer: 'cus_forged' } },
+    });
+    const res = await fetch(`${url}/webhook/stripe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'stripe-signature': 't=1,v1=deadbeef' },
+      body: raw,
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { firstSale: boolean; signatureVerified: boolean };
+    expect(body.firstSale).toBe(false);
+    expect(body.signatureVerified).toBe(false);
+    expect(received).toHaveLength(0);
+
+    await srv.close();
+  });
 });
 
 describe('SIMULATE WEBHOOK via socket (kartu 💳)', () => {

@@ -114,6 +114,24 @@ describe('Stripe Webhook Sentinel idempoten (PRD §3.4)', () => {
     expect(sentinel.lastSignatureVerified).toBe(true);
     expect(sentinel.metrics().lastStripeEvent).toContain('checkout.session.completed');
   });
+
+  it('secret terpasang + signature invalid → event ditolak tanpa mengubah metrik', () => {
+    const sentinel = new StripeSentinel(secret);
+    const { raw } = makeEvent('evt_forged');
+    const res = sentinel.receive(raw, 't=1,v1=deadbeef', 'run_c');
+    expect(res).toBeNull();
+    expect(sentinel.lastSignatureVerified).toBe(false);
+    expect(sentinel.metrics().salesCount).toBe(0);
+    expect(sentinel.metrics().grossRevenueArr).toBe(0);
+  });
+
+  it('tanpa secret (offline) event tetap diproses untuk demo', () => {
+    const sentinel = new StripeSentinel(undefined);
+    const { raw } = makeEvent('evt_offline');
+    const res = sentinel.receive(raw, '', 'run_d');
+    expect(res).not.toBeNull();
+    expect(sentinel.lastSignatureVerified).toBe(false);
+  });
 });
 
 describe('Social Campaign Dispatcher (PRD §3.4)', () => {

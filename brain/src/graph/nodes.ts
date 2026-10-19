@@ -293,10 +293,11 @@ export function qaNode(deps: GraphDeps) {
     );
 
     const { value: result, latencyMs } = await timed(() =>
+      // Tanpa timeoutMs eksplisit: driver memakai default-nya sendiri
+      // (LocalSandbox = config.sandboxTimeoutMs, E2B = fallback internal).
       deps.sandbox.run({
         runId: state.runId,
         files: state.artifacts,
-        timeoutMs: 60_000,
         coverage: true,
       }),
     );
@@ -346,7 +347,7 @@ export function safeBuildNode(deps: GraphDeps) {
     );
 
     const { value: result, latencyMs } = await timed(() =>
-      deps.sandbox.run({ runId: state.runId, files, timeoutMs: 60_000 }),
+      deps.sandbox.run({ runId: state.runId, files }),
     );
 
     const ok = result.ok && !result.rejectedBy;

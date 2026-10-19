@@ -63,47 +63,51 @@ export class LiveSocial implements SocialDriver {
   private async postToX(input: SocialDispatchInput): Promise<SocialPostPayload | null> {
     if (!this.opts.xBearerToken) return null;
     const text = [input.hook, ...input.thread].join('\n\n').slice(0, 260);
-    const res = await fetch('https://api.twitter.com/2/tweets', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${this.opts.xBearerToken}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json().catch(() => ({}))) as { data?: { id?: string } };
-    const id = data.data?.id ?? '';
-    return {
-      runId: input.runId,
-      platform: 'x',
-      status: 'published',
-      queueId: id,
-      thread: input.thread,
-      hook: input.hook,
-      metrics: { impressions: 0, clicks: 0, retweets: 0 },
-      sentiment: 'positive',
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      const res = await fetch('https://api.twitter.com/2/tweets', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.opts.xBearerToken}`,
+          'content-type': 'application/json',
+        },
+        signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        // App-only bearer ditolak X untuk POST /2/tweets (butuh OAuth user
+        // context) — laporkan jujur, jangan diam-diam dianggap sukses.
+        console.warn(`[social:x] HTTP ${res.status} — posting butuh OAuth user context`);
+        return null;
+      }
+      const data = (await res.json().catch(() => ({}))) as { data?: { id?: string } };
+      const id = data.data?.id ?? '';
+      return {
+        runId: input.runId,
+        platform: 'x',
+        status: 'published',
+        queueId: id,
+        thread: input.thread,
+        hook: input.hook,
+        metrics: { impressions: 0, clicks: 0, retweets: 0 },
+        sentiment: 'positive',
+        timestamp: new Date().toISOString(),
+      };
+    } catch (err) {
+      console.warn(`[social:x] network error: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   async dispatch(input: SocialDispatchInput): Promise<SocialPostPayload[]> {
     const results: SocialPostPayload[] = [];
     const x = await this.postToX(input).catch(() => null);
     if (x) results.push(x);
-    // Threads butuh access token + recipient id (santai — placeholder bila belum di-set).
+    // Threads: integrasi API belum diimplementasikan — jangan memancarkan
+    // event "scheduled" palsu ke Theater (backlog CS Agent/social).
     if (this.opts.threadsAccessToken) {
-      results.push({
-        runId: input.runId,
-        platform: 'threads',
-        status: 'scheduled',
-        queueId: `threads_${hash(input.runId).toString(36).slice(0, 6)}`,
-        thread: input.thread,
-        hook: input.hook,
-        metrics: { impressions: 0, clicks: 0, retweets: 0 },
-        sentiment: 'positive',
-        timestamp: new Date().toISOString(),
-      });
+      console.warn(
+        '[social:threads] THREADS_ACCESS_TOKEN di-set tapi integrasi Threads belum tersedia — dilewati',
+      );
     }
     return results;
   }

@@ -80,18 +80,23 @@ export function AgentStream(): ReactNode {
   const [autoScroll, setAutoScroll] = useState(true);
   const [open, setOpen] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
-  // events/sec: jepret eventCount tiap detik, tampilkan delta.
+  // events/sec: jepret eventCount tiap detik, tampilkan delta. Nilai terbaru
+  // dibaca lewat ref supaya interval tidak restart tiap event (EV/S tak macet).
   const [eps, setEps] = useState(0);
   const lastCountRef = useRef(eventCount);
+  const eventCountRef = useRef(eventCount);
+  useEffect(() => {
+    eventCountRef.current = eventCount;
+  }, [eventCount]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      const delta = eventCount - lastCountRef.current;
-      lastCountRef.current = eventCount;
+      const delta = eventCountRef.current - lastCountRef.current;
+      lastCountRef.current = eventCountRef.current;
       setEps(delta);
     }, 1000);
     return () => clearInterval(id);
-  }, [eventCount]);
+  }, []);
 
   useEffect(() => {
     if (autoScroll && listRef.current) listRef.current.scrollTop = 0;

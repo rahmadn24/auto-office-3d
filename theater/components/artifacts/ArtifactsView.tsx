@@ -555,7 +555,8 @@ export function ArtifactsView(): ReactNode {
     link.href = url;
     link.download = `${a.projectName.replace(/\s+/g, '-').toLowerCase() || 'artifacts'}-bundle.zip`;
     link.click();
-    URL.revokeObjectURL(url);
+    // Safari/Firefox membatalkan download bila object URL dicabut terlalu cepat.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
 
   return (
