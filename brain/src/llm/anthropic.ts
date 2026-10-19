@@ -111,7 +111,7 @@ export class AnthropicLLM implements LLMProvider {
 
     const res = await this.post({
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: request.maxOutputTokens ?? 4096,
       system,
       messages: [{ role: 'user', content: user }],
     });
@@ -123,6 +123,7 @@ export class AnthropicLLM implements LLMProvider {
 
     const json = (await res.json()) as {
       content: Array<{ type: string; text?: string }>;
+      stop_reason?: string;
       usage?: { input_tokens?: number; output_tokens?: number };
     };
     const text = json.content
@@ -133,6 +134,7 @@ export class AnthropicLLM implements LLMProvider {
     return {
       text,
       model: this.model,
+      ...(json.stop_reason ? { finishReason: json.stop_reason } : {}),
       usage: {
         inputTokens: json.usage?.input_tokens ?? estimateTokens(user + system),
         outputTokens: json.usage?.output_tokens ?? estimateTokens(text),

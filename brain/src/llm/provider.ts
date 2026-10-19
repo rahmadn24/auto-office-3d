@@ -16,12 +16,19 @@ export interface LLMRequest {
   task: LLMTask;
   prompt: string;
   context: LLMContext;
+  /**
+   * Override batas output satu request. Dipakai Dev Agent saat retry codegen:
+   * percobaan pertama 4.096 token, retry 8.192 token bila JSON terpotong.
+   */
+  maxOutputTokens?: number;
 }
 
 export interface LLMResult {
   text: string;
   model: string;
   usage: { inputTokens: number; outputTokens: number };
+  /** Alasan provider berhenti (`stop`, `length`, `max_tokens`, …) — guardrail diagnosa. */
+  finishReason?: string;
 }
 
 export interface LLMProvider {
