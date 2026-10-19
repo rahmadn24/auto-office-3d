@@ -86,6 +86,7 @@ export class LiveGitHub implements GitHubDriver {
         const res = await fetch(`${GITHUB_API}/user/repos`, {
           method: 'POST',
           headers: this.headers(),
+          signal: AbortSignal.timeout(15_000),
           body: JSON.stringify({ name: slug, private: false, auto_init: true }),
         });
         if (!res.ok && res.status !== 422) {
@@ -110,24 +111,56 @@ export class LiveGitHub implements GitHubDriver {
   }
 
   async commitFiles(repoUrl: string, files: Record<string, string>): Promise<CommitResult> {
-    const paths = Object.keys(files);
-    // GitHub Contents API per-berkas (sederhana, tanpa library) — cukup untuk
-    // artefak hasil agen. sha branch main diambil dulu bila branch sudah ada.
+    const repo = new URL(repoUrl).pathname.split('/').filter(Boolean).pop() ?? '';
+    const branch = 'main';
+    /** Encode per-segmen: spasi/#/? di path jangan merusak URL Contents API. */
+    const encodedPath = (p: string): string => p.split('/').map(encodeURIComponent).join('/');
     let committed = 0;
-    for (const path of paths) {
-      const putUrl = `${GITHUB_API}/repos/${this.owner}/${new URL(repoUrl).pathname.split('/').pop()}/contents/${path}`;
-      const res = await fetch(putUrl, {
-        method: 'PUT',
-        headers: this.headers(),
-        body: JSON.stringify({
-          message: `autooffice3d: add ${path}`,
-          content: Buffer.from(files[path] ?? '', 'utf8').toString('base64'),
-          branch: 'main',
-        }),
-      });
-      if (res.ok || res.status === 422) committed += 1;
+    let sha = '';
+    for (const [path, content] of Object.entries(files)) {
+      try {
+        // Update file wajib menyertakan `sha` versi terakhir (kalau ada);
+        // tanpa itu GitHub membalas 422 dan file tidak pernah berubah.
+        const current = await fetch(
+          `${GITHUB_API}/repos/${this.owner}/${repo}/contents/${encodedPath(path)}?ref=${branch}`,
+          { headers: this.headers(), signal: AbortSignal.timeout(15_000) },
+        );
+        const existing = current.ok
+          ? ((await current.json().catch(() => ({}))) as { sha?: string }).sha
+          : undefined;
+
+        const res = await fetch(
+          `${GITHUB_API}/repos/${this.owner}/${repo}/contents/${encodedPath(path)}`,
+          {
+            method: 'PUT',
+            headers: this.headers(),
+            signal: AbortSignal.timeout(15_000),
+            body: JSON.stringify({
+              message: `autooffice3d: add ${path}`,
+              content: Buffer.from(content, 'utf8').toString('base64'),
+              branch,
+              ...(existing ? { sha: existing } : {}),
+            }),
+          },
+        );
+        if (!res.ok) {
+          console.warn(
+            `[github] commit ${path} gagal: ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+          );
+          continue;
+        }
+        const created = (await res.json().catch(() => ({}))) as { commit?: { sha?: string } };
+        if (created.commit?.sha) sha = created.commit.sha;
+        committed += 1;
+      } catch (err) {
+        console.warn(`[github] commit ${path} error: ${(err as Error).message}`);
+      }
     }
-    return { committed, branch: 'main', sha: pseudoSha(`${repoUrl}:${paths.sort().join(',')}`) };
+    return {
+      committed,
+      branch,
+      sha: sha || pseudoSha(`${repoUrl}:${Object.keys(files).sort().join(',')}`),
+    };
   }
 }
 

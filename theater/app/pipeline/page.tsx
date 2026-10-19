@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react';
 
-import { BrainBridge } from '@/components/BrainBridge';
 import { PipelineView } from '@/components/pipeline/PipelineView';
 import { AppShell } from '@/components/shell/AppShell';
 
@@ -10,7 +9,6 @@ import { AppShell } from '@/components/shell/AppShell';
 export default function PipelinePage(): ReactNode {
   return (
     <AppShell>
-      <BrainBridge />
       <PipelineView />
     </AppShell>
   );

@@ -40,28 +40,31 @@ export function CelebrationOverlay(): ReactNode {
   const wasCelebrating = useRef(false);
 
   useEffect(() => {
-    if (celebrating && !wasCelebrating.current) {
-      wasCelebrating.current = true;
-      setShowBanner(true);
-
-      try {
-        const Ctor =
-          window.AudioContext ??
-          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (Ctor) {
-          const ctx = (audioRef.current ??= new Ctor());
-          if (ctx.state === 'suspended') void ctx.resume();
-          playFanfare(ctx);
-        }
-      } catch {
-        // Audio diblokir browser — visual tetap jalan
-      }
-
-      const timer = setTimeout(() => setShowBanner(false), 5200);
-      return () => clearTimeout(timer);
+    if (!celebrating) {
+      // Berhenti celebrating sebelum timer 5.2s (mis. resetHome demo) harus
+      // tetap menyembunyikan banner — jangan cuma membatalkan timer.
+      wasCelebrating.current = false;
+      setShowBanner(false);
+      return undefined;
     }
-    if (!celebrating) wasCelebrating.current = false;
-    return undefined;
+    wasCelebrating.current = true;
+    setShowBanner(true);
+
+    try {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (Ctor) {
+        const ctx = (audioRef.current ??= new Ctor());
+        if (ctx.state === 'suspended') void ctx.resume();
+        playFanfare(ctx);
+      }
+    } catch {
+      // Audio diblokir browser — visual tetap jalan
+    }
+
+    const timer = setTimeout(() => setShowBanner(false), 5200);
+    return () => clearTimeout(timer);
   }, [celebrating]);
 
   return (

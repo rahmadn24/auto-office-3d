@@ -59,7 +59,9 @@ function bridgeTo3D(agentId: AgentId, payload: AgentStatusPayload): void {
 
   const target: readonly [number, number, number] = payload.coordinates
     ? [payload.coordinates.x, payload.coordinates.y, payload.coordinates.z]
-    : agentHome(agentId);
+    : payload.currentAction === 'walking'
+      ? zoneWaypoint(payload.targetZone)
+      : agentHome(agentId);
 
   const runtime = office.agents[agentId];
   const alreadyNear = runtime && runtime.target === undefined;

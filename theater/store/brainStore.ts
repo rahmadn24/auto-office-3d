@@ -83,6 +83,16 @@ export function parseBrainTimestamp(ts: string): number {
 }
 
 /**
+ * Epoch ms dengan koreksi rollover tengah malam: timestamp yang tampak >12 jam
+ * lebih tua dari status sebelumnya dianggap milik hari berikutnya, bukan event basi.
+ */
+export function parseBrainTimestampWithRollover(ts: string, prevMs: number | null): number {
+  let ms = parseBrainTimestamp(ts);
+  if (prevMs !== null && ms < prevMs - 12 * 60 * 60 * 1000) ms += 24 * 60 * 60 * 1000;
+  return ms;
+}
+
+/**
  * Matriks aksi → state animasi 3D (theater/store/officeStore AnimState).
  * PRD §4.2: walking/celebrating dipetakan langsung; sisa aksi kerja = WORKING.
  */
@@ -122,6 +132,8 @@ interface BrainStore {
   brainVersion: string | null;
   /** Status terakhir tiap agen — diff update, bukan replace penuh. */
   agents: Partial<Record<AgentId, AgentStatusPayload>>;
+  /** Epoch ms status terakhir per agen — dipakai diff & koreksi rollover tengah malam. */
+  agentStatusMs: Partial<Record<AgentId, number>>;
   /** Stage run aktif, diturunkan dari aksi mayoritas (mis. BUILDING). */
   runStage: string | null;
   runId: string | null;
@@ -225,6 +237,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
   bestLatencyMs: null,
   brainVersion: null,
   agents: {},
+  agentStatusMs: {},
   runStage: null,
   runId: null,
   tokens: 0,
@@ -251,11 +264,11 @@ export const useBrain = create<BrainStore>((set, get) => ({
     const s = get();
     const now = Date.now();
 
-    // Diff update: hanya ganti bila payload lebih baru dari yang tersimpan.
+    // Diff update: bandingkan epoch ms (tahan rollover tengah malam).
     const prev = s.agents[payload.agentId];
-    if (prev && prev.timestamp >= payload.timestamp) return false;
-
-    const at = parseBrainTimestamp(payload.timestamp);
+    const prevMs = s.agentStatusMs[payload.agentId] ?? null;
+    const at = parseBrainTimestampWithRollover(payload.timestamp, prevMs);
+    if (prev && prevMs !== null && at <= prevMs) return false;
     const latency = now - at;
     const item: FeedItem = {
       id: nextFeedId(),
@@ -277,6 +290,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
 
     set({
       agents,
+      agentStatusMs: { ...s.agentStatusMs, [payload.agentId]: at },
       feed,
       runStage: deriveRunStage(agents),
       runId: payload.runId,
@@ -434,9 +448,14 @@ export const useBrain = create<BrainStore>((set, get) => ({
   }) => {
     const s = get();
     const map: Partial<Record<AgentId, AgentStatusPayload>> = { ...s.agents };
+    const statusMs = { ...s.agentStatusMs };
     for (const a of agents ?? []) {
-      const prev = map[a.agentId];
-      if (!prev || prev.timestamp < a.timestamp) map[a.agentId] = a;
+      const prevMs = statusMs[a.agentId] ?? null;
+      const at = parseBrainTimestampWithRollover(a.timestamp, prevMs);
+      if (prevMs === null || at > prevMs) {
+        map[a.agentId] = a;
+        statusMs[a.agentId] = at;
+      }
     }
     let hasCustomers = s.hasCustomers;
     let milestone = s.milestone;
@@ -467,6 +486,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
     );
     set({
       agents: map,
+      agentStatusMs: statusMs,
       hasCustomers,
       milestone,
       seenSaleIds: seen,

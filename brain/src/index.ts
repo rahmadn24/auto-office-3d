@@ -7,6 +7,7 @@ import { createMemory } from './memory';
 import { runAutonomous, seedMemory } from './run';
 import { startSocketServer } from './server/socket';
 import { formatTokens } from './telemetry/tokens';
+import { BRAIN_VERSION } from './version';
 
 /**
  * Entry point daemon Brain.
@@ -40,7 +41,7 @@ async function main(): Promise<void> {
   });
 
   console.log('┌──────────────────────────────────────────────────────────────┐');
-  console.log('│  AutoOffice3D · THE BRAIN daemon v1.7                        │');
+  console.log(`│  AutoOffice3D · THE BRAIN daemon v${BRAIN_VERSION}                        │`);
   console.log('└──────────────────────────────────────────────────────────────┘');
   console.log(`  socket       ${server.url}`);
   console.log(`  health       http://localhost:${server.port}/health`);

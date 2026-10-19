@@ -10,11 +10,9 @@ import { connectBrain, disconnectBrain } from '@/lib/brainSocket';
  */
 export function BrainBridge(): ReactNode {
   useEffect(() => {
-    const socket = connectBrain();
-    return () => {
-      socket.disconnect();
-      disconnectBrain();
-    };
+    connectBrain();
+    // Dipasang sekali di root layout — jangan putuskan socket saat pindah tab.
+    return () => disconnectBrain();
   }, []);
 
   return null;

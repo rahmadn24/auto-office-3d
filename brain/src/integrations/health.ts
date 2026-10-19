@@ -12,7 +12,7 @@ export class HttpHealthProbe implements HealthProbe {
     private readonly timeoutMs = 8000,
   ) {}
 
-  private async hit(url: string): Promise<{ ok: boolean; ttfbMs: number }> {
+  private async hit(url: string): Promise<{ ok: boolean; ttfbMs: number; error: boolean }> {
     const started = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -20,9 +20,9 @@ export class HttpHealthProbe implements HealthProbe {
       const res = await fetch(url, { signal: controller.signal, redirect: 'follow' });
       // TTFB = waktu sampai header respons pertama (stream dibaca sebagian).
       const ttfbMs = Date.now() - started;
-      return { ok: res.status === 200, ttfbMs };
+      return { ok: res.status === 200, ttfbMs, error: false };
     } catch {
-      return { ok: false, ttfbMs: Date.now() - started };
+      return { ok: false, ttfbMs: Date.now() - started, error: true };
     } finally {
       clearTimeout(timer);
     }
@@ -35,7 +35,9 @@ export class HttpHealthProbe implements HealthProbe {
     return {
       rootOk: root.ok,
       apiOk: api.ok,
-      sslValid: base.startsWith('https://'),
+      // https + fetch berhasil = SSL benar-benar terverifikasi; fetch gagal
+      // (mis. cert invalid) → konservatif false, bukan cuma cek prefix URL.
+      sslValid: base.startsWith('https://') && !root.error && !api.error,
       ttfbMs: Math.max(root.ttfbMs, api.ttfbMs),
     };
   }

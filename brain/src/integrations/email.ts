@@ -34,19 +34,30 @@ export class ResendEmail implements EmailDriver {
     subject: string;
     body: string;
   }): Promise<{ sent: boolean; id: string }> {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        from: this.from,
-        to: [input.to],
-        subject: input.subject,
-        text: input.body,
-      }),
-    });
-    if (!res.ok) return { sent: false, id: '' };
-    const data = (await res.json().catch(() => ({}))) as { id?: string };
-    return { sent: true, id: data.id ?? '' };
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({
+          from: this.from,
+          to: [input.to],
+          subject: input.subject,
+          text: input.body,
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        console.warn(`[email:resend] HTTP ${res.status}: ${detail.slice(0, 200)}`);
+        return { sent: false, id: '' };
+      }
+      const data = (await res.json().catch(() => ({}))) as { id?: string };
+      return { sent: true, id: data.id ?? '' };
+    } catch (err) {
+      // Error jaringan jangan mematikan graph — cukup laporkan gagal kirim.
+      console.warn(`[email:resend] network error: ${(err as Error).message}`);
+      return { sent: false, id: '' };
+    }
   }
 }
 

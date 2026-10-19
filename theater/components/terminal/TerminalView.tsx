@@ -90,7 +90,8 @@ function RuntimeBus(): ReactNode {
     a.href = url;
     a.download = `runtime-bus-${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Safari/Firefox membatalkan download bila object URL dicabut terlalu cepat.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
 
   return (

@@ -38,7 +38,8 @@ export function verifyStripeSignature(
 
   const tolerance = opts.toleranceS ?? 300;
   const now = opts.now ?? Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(t)) > tolerance) return false;
+  const ts = Number(t);
+  if (!Number.isFinite(ts) || Math.abs(now - ts) > tolerance) return false;
 
   const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
   const a = Buffer.from(expected, 'utf8');
@@ -116,6 +117,15 @@ export class StripeSentinel {
       ? verifyStripeSignature(rawBody, sigHeader, this.webhookSecret)
       : false;
     this.lastSignatureVerified = verified;
+
+    // Secret dipasang → HANYA event bersignature valid yang diproses.
+    // Tanpa guard ini, webhook forged tetap menambah salesCount/gross
+    // walau endpoint membalas 401 (celah terkonfirmasi di audit).
+    if (this.webhookSecret && !verified) {
+      this.lastStripeEvent = `rejected · invalid signature · ${event.type}`;
+      return null;
+    }
+
     // Tanpa secret (mode offline) signature dianggap tidak diverifikasi —
     // event tetap diproses untuk demo, tetapi flag disiarkan jujur ke UI.
     this.lastStripeEvent = `${event.type} · ${event.data.object.customer ?? 'cus_unknown'}`;

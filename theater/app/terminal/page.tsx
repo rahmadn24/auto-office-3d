@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react';
 
-import { BrainBridge } from '@/components/BrainBridge';
 import { AppShell } from '@/components/shell/AppShell';
 import { TerminalView } from '@/components/terminal/TerminalView';
 
@@ -10,7 +9,6 @@ import { TerminalView } from '@/components/terminal/TerminalView';
 export default function TerminalPage(): ReactNode {
   return (
     <AppShell>
-      <BrainBridge />
       <TerminalView />
     </AppShell>
   );

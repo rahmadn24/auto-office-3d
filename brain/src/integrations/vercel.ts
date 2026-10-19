@@ -82,12 +82,33 @@ export class LiveVercel implements DeployDriver {
     const steps = stepsTemplate();
     input.onStep?.([...steps], 'building');
 
-    const res = await fetch('https://api.vercel.com/v13/deployments', {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ name: input.slug, target: 'production', files: [] }),
-    });
-    if (!res.ok) {
+    let created: { url?: string; id?: string };
+    try {
+      const res = await fetch('https://api.vercel.com/v13/deployments', {
+        method: 'POST',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({
+          name: input.slug,
+          target: 'production',
+          // Artefak agen di-upload inline (base64) — `files: []` lama membuat
+          // deployment kosong.
+          files: Object.entries(input.files).map(([file, content]) => ({
+            file,
+            data: Buffer.from(content, 'utf8').toString('base64'),
+            encoding: 'base64',
+          })),
+        }),
+      });
+      if (!res.ok) {
+        console.warn(
+          `[vercel] create deployment ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`,
+        );
+        throw new Error('deployment create failed');
+      }
+      created = (await res.json()) as { url?: string; id?: string };
+    } catch (err) {
+      console.warn(`[vercel] ${(err as Error).message}`);
       const stepsFailed = steps.map((s, i) => (i === 0 ? { ...s, status: 'done' as const } : s));
       input.onStep?.(stepsFailed, 'degraded');
       return {
@@ -99,19 +120,26 @@ export class LiveVercel implements DeployDriver {
         edgeCache: false,
       };
     }
-    const created = (await res.json()) as { url?: string; id?: string };
     const id = created.id ?? '';
     const host = created.url ?? `${input.slug}.vercel.app`;
 
-    // Poll build status sampai READY (batas 60s, PRD §3.3).
+    // Poll build status sampai READY (batas 60s, PRD §3.3). Hanya response OK
+    // yang boleh mengubah state — error/parse gagal jangan dianggap READY.
     const deadline = Date.now() + 60_000;
     let state = 'BUILDING';
     while (Date.now() < deadline) {
-      const poll = await fetch(`https://api.vercel.com/v6/deployments/${id}`, {
-        headers: this.headers(),
-      });
-      const body = (await poll.json().catch(() => ({}))) as { readyState?: string };
-      state = body.readyState ?? 'READY';
+      try {
+        const poll = await fetch(`https://api.vercel.com/v13/deployments/${id}`, {
+          headers: this.headers(),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (poll.ok) {
+          const body = (await poll.json().catch(() => ({}))) as { readyState?: string };
+          if (body.readyState) state = body.readyState;
+        }
+      } catch {
+        // Jaringan transien — biarkan siklus berikutnya mencoba sampai deadline.
+      }
       if (state === 'READY' || state === 'ERROR') break;
       await sleep(1500);
     }

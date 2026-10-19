@@ -85,7 +85,7 @@ function exec(nodeArgs: string[], cwd: string, timeoutMs: number): Promise<ExecO
   });
 }
 
-function parseVitestReport(out: string, fallbackDuration: number): TestReport {
+export function parseVitestReport(out: string, fallbackDuration: number): TestReport {
   const testsLine = /^\s*Tests\s+(.+)$/m.exec(out)?.[1] ?? '';
   const passed = Number(/(\d+)\s+passed/.exec(testsLine)?.[1] ?? 0);
   const failed = Number(/(\d+)\s+failed/.exec(testsLine)?.[1] ?? 0);
@@ -147,7 +147,7 @@ function parseCoverage(out: string): CoverageReport | undefined {
   };
 }
 
-const SANDBOX_TSCONFIG = {
+export const SANDBOX_TSCONFIG = {
   compilerOptions: {
     target: 'ES2022',
     lib: ['ES2023'],
