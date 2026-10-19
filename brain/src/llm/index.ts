@@ -21,6 +21,7 @@ export function createLLM(config: Config): LLMProvider {
       config.openaiCompatApiKey,
       config.openaiCompatModel,
       config.openaiCompatBaseUrl,
+      { taskModels: config.openaiCompatTaskModels },
     );
   }
   return new StubLLM();

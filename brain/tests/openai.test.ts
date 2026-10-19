@@ -146,6 +146,35 @@ describe('OpenAICompatLLM — driver provider murah ber-format OpenAI (Fase 13)'
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('taskModels: model per-task (GLM/DeepSeek/MiMo via 9router) menang atas default', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(okBody));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const llm = new OpenAICompatLLM('sk', 'fallback-model', 'http://localhost:20128/v1', {
+      taskModels: {
+        prd: 'oc/glm-5.3-flash-free',
+        code: 'oc/deepseek-v4.1-flash-free',
+        cs: 'oc/mimo-v2.6-flash-free',
+      },
+    });
+
+    const prd = await llm.complete({ task: 'prd', prompt: 'x', context: { projectName: 'p' } });
+    const code = await llm.complete({ task: 'code', prompt: 'x', context: { projectName: 'p' } });
+    const cs = await llm.complete({ task: 'cs', prompt: 'x', context: { projectName: 'p' } });
+    const brief = await llm.complete({ task: 'brief', prompt: 'x', context: { projectName: 'p' } });
+
+    const models = fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(String((init as RequestInit).body)).model as string,
+    );
+    expect(models).toEqual([
+      'oc/glm-5.3-flash-free',
+      'oc/deepseek-v4.1-flash-free',
+      'oc/mimo-v2.6-flash-free',
+      'fallback-model',
+    ]);
+    expect([prd.model, code.model, cs.model, brief.model]).toEqual(models);
+  });
+
   it('timeout: request melewati batas waktu → error jelas tanpa percobaan ulang', async () => {
     const fetchMock = vi.fn(
       (_url: string, init?: RequestInit) =>

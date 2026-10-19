@@ -33,11 +33,25 @@ const taskCount = flagValue('--tasks', '3');
 /** Tier gratis/termurah dulu — naik tier hanya bila pass rate < 80%. */
 const DEFAULT_CANDIDATES = [
   {
-    id: 'deepseek-v4.1-flash',
-    label: 'DeepSeek 4.1 Flash (tier gratis · 9router)',
-    model: 'tokenomix/deepseek-v4.1-flash',
-    baseUrl: process.env.ANTHROPIC_BASE_URL ?? 'http://localhost:20128/v1',
-    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    id: 'oc-deepseek-v4.1-flash',
+    label: 'DeepSeek 4.1 Flash free (9router · Dev)',
+    model: 'oc/deepseek-v4.1-flash-free',
+    baseUrl: process.env.OPENAI_COMPAT_BASE_URL ?? 'http://127.0.0.1:20128/v1',
+    apiKeyEnv: 'OPENAI_COMPAT_API_KEY',
+  },
+  {
+    id: 'oc-glm-5.3-flash',
+    label: 'GLM 5.3 Flash free (9router · PM)',
+    model: 'oc/glm-5.3-flash-free',
+    baseUrl: process.env.OPENAI_COMPAT_BASE_URL ?? 'http://127.0.0.1:20128/v1',
+    apiKeyEnv: 'OPENAI_COMPAT_API_KEY',
+  },
+  {
+    id: 'oc-mimo-v2.6-flash',
+    label: 'MiMo 2.6 Flash free (9router · CS)',
+    model: 'oc/mimo-v2.6-flash-free',
+    baseUrl: process.env.OPENAI_COMPAT_BASE_URL ?? 'http://127.0.0.1:20128/v1',
+    apiKeyEnv: 'OPENAI_COMPAT_API_KEY',
   },
 ];
 
@@ -69,11 +83,13 @@ const results = [];
 for (const candidate of selected) {
   const apiKey = useStub
     ? 'stub'
-    : (process.env[candidate.apiKeyEnv ?? 'ANTHROPIC_API_KEY'] ?? process.env.ROUTER_TOKEN ?? '');
+    : (process.env[candidate.apiKeyEnv ?? 'OPENAI_COMPAT_API_KEY'] ??
+      process.env.ROUTER_TOKEN ??
+      '');
 
   if (!useStub && !apiKey) {
     console.log(
-      `  ⏭  ${candidate.id}: skip — isi ${candidate.apiKeyEnv ?? 'ANTHROPIC_API_KEY'} (token 9router) untuk menjalankan`,
+      `  ⏭  ${candidate.id}: skip — isi ${candidate.apiKeyEnv ?? 'OPENAI_COMPAT_API_KEY'} (token 9router) untuk menjalankan`,
     );
     results.push({ id: candidate.id, skipped: 'missing api key' });
     continue;
@@ -81,10 +97,10 @@ for (const candidate of selected) {
 
   const env = {
     ...process.env,
-    LLM_DRIVER: useStub ? 'stub' : 'anthropic',
-    MODEL: useStub ? 'stub-deterministic' : candidate.model,
-    ANTHROPIC_BASE_URL: candidate.baseUrl ?? 'http://localhost:20128/v1',
-    ANTHROPIC_API_KEY: apiKey,
+    LLM_DRIVER: useStub ? 'stub' : 'openai-compat',
+    OPENAI_COMPAT_MODEL: useStub ? 'stub-deterministic' : candidate.model,
+    OPENAI_COMPAT_BASE_URL: candidate.baseUrl ?? 'http://127.0.0.1:20128/v1',
+    OPENAI_COMPAT_API_KEY: apiKey,
     MEMORY_DRIVER: 'memory',
     SANDBOX_DRIVER: 'local',
     BENCH_TASKS: String(taskCount),

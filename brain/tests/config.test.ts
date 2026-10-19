@@ -58,6 +58,13 @@ describe('config & driver resolution', () => {
     expect(loadConfig({ OPENAI_COMPAT_MODEL: 'deepseek-chat' }).openaiCompatModel).toBe(
       'deepseek-chat',
     );
+    const routed = loadConfig({
+      OPENAI_COMPAT_MODEL_CODE: 'oc/deepseek-v4.1-flash-free',
+      OPENAI_COMPAT_MODEL_CS: 'oc/mimo-v2.6-flash-free',
+    });
+    expect(routed.openaiCompatTaskModels.code).toBe('oc/deepseek-v4.1-flash-free');
+    expect(routed.openaiCompatTaskModels.cs).toBe('oc/mimo-v2.6-flash-free');
+    expect(routed.openaiCompatTaskModels.prd).toBeUndefined();
   });
 
   it('auto: sebagian kredensial → jatuh ke driver aman', () => {

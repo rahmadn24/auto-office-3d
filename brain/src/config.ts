@@ -25,6 +25,16 @@ const EnvSchema = z.object({
   OPENAI_COMPAT_API_KEY: z.string().optional(),
   OPENAI_COMPAT_BASE_URL: z.string().default('https://api.openai.com/v1'),
   OPENAI_COMPAT_MODEL: z.string().default('gpt-4o-mini'),
+  /**
+   * Routing model per task (opsional) — mis. via 9router: PM (`prd`/`briefing`/
+   * `brief`) → GLM, Dev (`code`) → DeepSeek, CS (`cs`) → MiMo. Kosong = pakai
+   * OPENAI_COMPAT_MODEL. Nama env mengikuti LLMTask di `llm/provider.ts`.
+   */
+  OPENAI_COMPAT_MODEL_PRD: z.string().optional(),
+  OPENAI_COMPAT_MODEL_CODE: z.string().optional(),
+  OPENAI_COMPAT_MODEL_BRIEFING: z.string().optional(),
+  OPENAI_COMPAT_MODEL_BRIEF: z.string().optional(),
+  OPENAI_COMPAT_MODEL_CS: z.string().optional(),
 
   // Memory
   MEMORY_DRIVER: z.enum(['auto', 'memory', 'lancedb', 'pinecone']).default('auto'),
@@ -130,6 +140,8 @@ export interface Config {
   openaiCompatApiKey?: string;
   openaiCompatBaseUrl: string;
   openaiCompatModel: string;
+  /** Override model per LLMTask (prd/code/briefing/brief/cs) — kosong = default. */
+  openaiCompatTaskModels: Partial<Record<string, string>>;
   memoryDriver: 'memory' | 'lancedb' | 'pinecone';
   openaiApiKey?: string;
   openaiBaseUrl?: string;
@@ -321,6 +333,13 @@ export function loadConfig(
     openaiCompatApiKey: e.OPENAI_COMPAT_API_KEY,
     openaiCompatBaseUrl: e.OPENAI_COMPAT_BASE_URL,
     openaiCompatModel: e.OPENAI_COMPAT_MODEL,
+    openaiCompatTaskModels: {
+      prd: e.OPENAI_COMPAT_MODEL_PRD,
+      code: e.OPENAI_COMPAT_MODEL_CODE,
+      briefing: e.OPENAI_COMPAT_MODEL_BRIEFING,
+      brief: e.OPENAI_COMPAT_MODEL_BRIEF,
+      cs: e.OPENAI_COMPAT_MODEL_CS,
+    },
     memoryDriver,
     openaiApiKey: e.OPENAI_API_KEY,
     openaiBaseUrl: e.OPENAI_BASE_URL,

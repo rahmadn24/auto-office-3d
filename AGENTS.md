@@ -24,7 +24,8 @@ Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.t
 stripe/midtrans/stub/xendit + factory `createPayment`) ·
 `brain/src/llm/` (driver LLM: provider.ts + anthropic/openai/openai-compat
 `openai.ts` chat completions + stub + `pricing.ts` tabel harga utk estimasi
-biaya) · `brain/src/telemetry/dailyBudget.ts` (budget token harian lintas-run
+biaya; routing model per-task via `OPENAI_COMPAT_MODEL_{PRD,CODE,BRIEFING,BRIEF,CS}`
+— mis. PM→GLM, Dev→DeepSeek, CS→MiMo lewat 9router) · `brain/src/telemetry/dailyBudget.ts` (budget token harian lintas-run
 Fase 13) ·
 `brain/src/cs/` (CS Agent Fase 11: `service.ts` omnichannel + closing, `leads.ts`
 store durable `leads`/`cs_messages`, `channels.ts` adapter widget/WA/email,
@@ -109,6 +110,10 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
   (`~/Library/Caches/com.apple.mediaanalysisd*`) pernah tumbuh GB-an dan aman dibersihkan.
 - `npm` di mesin ini pakai persetujuan install-scripts (`allowScripts` di package.json);
   paket native (better-sqlite3, esbuild, fsevents) harus di-approve agar postinstall jalan.
+- `brain/.env` dimuat otomatis oleh script `dev`/`start` (`tsx --env-file-if-exists=.env`);
+  env shell menang atas isi file. Jangan commit `.env` (sudah gitignored) — contoh di
+  `.env.example`. Routing model 9router: `OPENAI_COMPAT_MODEL_*` per task; model gratis
+  opencode memakai id `oc/<nama>-free` (mis. `oc/glm-5.3-flash-free`).
 - Socket client: BrainBridge WAJIB di `app/layout.tsx` (bukan per-tab) supaya koneksi
   tidak drop saat pindah tab.
 - Frame `run:replay` dikirim **hanya ke socket peminta** (bukan `io.emit`) — e2e/observer
