@@ -91,4 +91,29 @@ describe('config & driver resolution', () => {
     expect(loadConfig({ THREADS_ACCESS_TOKEN: 'th-x' }).socialDriver).toBe('stub');
     expect(loadConfig({ X_BEARER_TOKEN: 'x-x' }).socialDriver).toBe('live');
   });
+
+  it('auto WhatsApp: live hanya bila 3 kredensial Cloud API lengkap (Fase 11)', () => {
+    expect(loadConfig({}).whatsappDriver).toBe('stub');
+    expect(loadConfig({ WHATSAPP_ACCESS_TOKEN: 'wa-x' }).whatsappDriver).toBe('stub');
+    const live = loadConfig({
+      WHATSAPP_ACCESS_TOKEN: 'wa-x',
+      WHATSAPP_PHONE_NUMBER_ID: '1234567890',
+      WHATSAPP_VERIFY_TOKEN: 'vt',
+    });
+    expect(live.whatsappDriver).toBe('live');
+    expect(live.whatsappTemplateName).toBe('hello_world');
+  });
+
+  it('WHATSAPP_DRIVER=live tanpa kredensial → fail fast saat boot', () => {
+    expect(() => loadConfig({ WHATSAPP_DRIVER: 'live' })).toThrow(/WHATSAPP_ACCESS_TOKEN/);
+  });
+
+  it('default CS Agent: follow-up 60s, maks 3, URL publik/kontrak dari PORT', () => {
+    const config = loadConfig({ PORT: '5555' });
+    expect(config.csFollowupMs).toBe(60_000);
+    expect(config.csFollowupDelayMs).toBe(600_000);
+    expect(config.csMaxFollowups).toBe(3);
+    expect(config.csPublicBaseUrl).toBe('http://localhost:5555');
+    expect(config.csWidgetUrl).toBe('http://localhost:5555');
+  });
 });
