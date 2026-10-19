@@ -1,27 +1,32 @@
-# AutoOffice3D — Caddy vhost office stack (Fase 10).
+# AutoOffice3D — Caddy vhost office stack LOKAL (Fase 10/12).
 #
-#   http://office.localhost      → Theater (HUD)
-#   http://api.office.localhost  → Brain (health/control; socket tetap ke :4800)
+#   http://office.localhost  → Theater (HUD) + jalur Brain yang dibutuhkan
+#                              browser: /brain-server (socket), /widget/*,
+#                              /cs/contracts/*, /demo/*, /health.
+#   http://cs.localhost      → kanal publik CS: widget + kontrak + socket
+#                              (aksi operator tetap ditolak Brain tanpa token).
 #
-# Wildcard demo (*.demo.localhost) disiapkan untuk Fase 12: container demo
-# sudah membawa label `autooffice3d.route=demo.<slug>.localhost` +
-# `autooffice3d.preset`/`autooffice3d.slug`, jadi cukup menambahkan
-# caddy-docker-proxy atau blok wildcard di bawah saat CT wildcard dipakai.
+# Port Brain tidak dipublish di compose — semua akses lewat Caddy.
+# Versi VPS (TLS otomatis + basic auth + wildcard demo) ada di Caddyfile.vps.
 {
 	admin off
 	auto_https off
 }
 
-http://office.localhost {
-	reverse_proxy theater:3000
+http://{$OFFICE_DOMAIN:office.localhost} {
+	@brain path /brain-server* /widget/* /cs/contracts/* /demo/* /health
+	handle @brain {
+		reverse_proxy brain:4800
+	}
+	handle {
+		reverse_proxy theater:3000
+	}
 }
 
-http://api.office.localhost {
+http://{$CS_DOMAIN:cs.localhost} {
 	reverse_proxy brain:4800
 }
 
-# Fase 12 — wildcard demo (aktifkan bersama caddy-docker-proxy):
-#
-# http://*.demo.localhost {
-#	reverse_proxy demo-upstreams
-# }
+# Wildcard demo lokal tidak dipakai — instance demo diakses lewat mapping port
+# host (http://localhost:4510+). Di VPS, subdomain demo dibuat otomatis oleh
+# caddy-docker-proxy dari label `caddy=` yang dipasang Brain (Caddyfile.vps).

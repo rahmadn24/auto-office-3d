@@ -5,6 +5,8 @@ import { createCheckpointer, openOfficeDb, RunStore } from './durability/store';
 import { ensureDataDir } from './durability/paths';
 import { EventBus } from './events';
 import { createEmail } from './integrations';
+import { breakerMessage, createNotifier, deployMessage, saleMessage } from './integrations/notify';
+import { logger } from './logger';
 import { createLLM } from './llm';
 import { createMemory } from './memory';
 import { createPayment } from './payments';
@@ -41,6 +43,20 @@ async function main(): Promise<void> {
   const llm = createLLM(config);
   const email = createEmail(config);
 
+  // Fase 12 — notifikasi founder: milestone sale + deploy siap sampai di
+  // Telegram/Discord walau kantor tidak ditunggui (driver stub = catat lokal).
+  const notify = createNotifier(config);
+  bus.onMilestone((payload) => {
+    void notify.send(saleMessage(payload));
+  });
+  bus.onDeploy((payload) => {
+    // Hanya status final yang penting; provisioning→building→deploying tidak
+    // perlu notifikasi (mengurangi noise saat soak).
+    if (payload.status === 'ready' || payload.status === 'degraded') {
+      void notify.send(deployMessage(payload));
+    }
+  });
+
   // Fase 8 — Briefing Room: percakapan Founder↔PM (LLM task `briefing`),
   // durable di namespace `briefing`, GO → compile brief → founder:directive.
   const briefing = new BriefingService({ memory, llm });
@@ -58,6 +74,7 @@ async function main(): Promise<void> {
     leads,
     llm,
     email,
+    notify,
   });
 
   // Follow-up engine (PRD §3.5): sapu berkala lead yang jatuh tempo → CS kirim
@@ -67,8 +84,14 @@ async function main(): Promise<void> {
     followupTimer = setInterval(() => {
       void server.cs?.sweep().then((result) => {
         if (result.sent > 0 || result.lost > 0) {
-          console.log(
-            `[cs] follow-up sweep · ${result.checked} lead dicek · ${result.sent} terkirim (${result.templates} template) · ${result.lost} lost`,
+          logger.info(
+            {
+              checked: result.checked,
+              sent: result.sent,
+              templates: result.templates,
+              lost: result.lost,
+            },
+            'cs follow-up sweep',
           );
         }
       });
@@ -120,6 +143,11 @@ async function main(): Promise<void> {
       `\n  ✓ run ${state.runId} → ${state.stage} · ${state.iteration}/${state.maxIterations} cycles · ${formatTokens(tokensUsed)} tokens · ${Date.now() - started}ms`,
     );
     console.log(`    live: https://${state.liveUrl}`);
+    if (state.fallbackTriggered) {
+      void notify.send(
+        breakerMessage(state.runId, `safe-build aktif setelah ${state.maxIterations}x QA`),
+      );
+    }
   } else {
     console.log('\n  waiting for founder:directive …');
   }

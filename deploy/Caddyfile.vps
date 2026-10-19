@@ -1,0 +1,46 @@
+# AutoOffice3D — Caddy vhost PRODUKSI VPS (Fase 12), dipakai via
+# caddy-docker-proxy dengan CADDY_DOCKER_CADDYFILE_PATH menunjuk file ini.
+#
+#   {$OFFICE_DOMAIN}  → Theater (basic auth) + jalur Brain untuk browser
+#                       (socket /brain-server, /widget/*, /cs/contracts/*,
+#                       /demo/*, /health) — Caddy menyuntik Bearer token Brain
+#                       supaya socket operator privileged.
+#   {$CS_DOMAIN}      → kanal PUBLIK CS: widget JS + kontrak PDF + socket
+#                       (tanpa token → Brain hanya melayani `cs:widget_message`).
+#   demo.<slug>.{$DEMO_BASE_DOMAIN} → otomatis dari label `caddy=` container
+#                       demo (caddy-docker-proxy); TLS per-host Let's Encrypt.
+#
+# Wajib: OFFICE_DOMAIN, CS_DOMAIN, OFFICE_BASIC_AUTH (user + hash bcrypt),
+# BRAIN_AUTH_TOKEN. Rate limit opsional via plugin bawaan image custom
+# (deploy/caddy.Dockerfile + baris rate_limit yang dikomentari di bawah).
+{
+	email {$ACME_EMAIL:admin@example.com}
+}
+
+{$OFFICE_DOMAIN} {
+	# PRD §6.5: Theater di VPS wajib dilindungi token/basic auth.
+	basic_auth {
+		{$OFFICE_BASIC_AUTH}
+	}
+
+	# Rate limit (opsional — butuh image dengan plugin caddy-ratelimit):
+	# rate_limit {
+	#	zone office { key {remote_host} events 60 window 1m }
+	# }
+
+	@brain path /brain-server* /widget/* /cs/contracts/* /demo/* /health
+	handle @brain {
+		reverse_proxy brain:4800 {
+			# Token operator untuk socket privileged (kontrol/founder/CS inbox).
+			header_up Authorization "Bearer {$BRAIN_AUTH_TOKEN}"
+		}
+	}
+	handle {
+		reverse_proxy theater:3000
+	}
+}
+
+{$CS_DOMAIN} {
+	# Kanal publik widget CS; aksi operator tetap butuh token Brain.
+	reverse_proxy brain:4800
+}

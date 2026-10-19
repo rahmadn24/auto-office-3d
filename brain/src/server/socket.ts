@@ -3,7 +3,7 @@ import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https';
 
-import { Server } from 'socket.io';
+import { Server, type Socket } from 'socket.io';
 
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 
@@ -12,11 +12,13 @@ import type { Config } from '../config';
 import { createControl, type RunControl } from '../control';
 import { CsService, EmailChannelAdapter, WhatsAppAdapter, WidgetAdapter } from '../cs';
 import type { LeadsStore } from '../cs';
-import { contractsDir } from '../durability/paths';
+import { contractsDir, dirSizeBytes } from '../durability/paths';
 import type { RunStore } from '../durability/store';
 import { EventBus } from '../events';
 import type { EmailDriver } from '../integrations/types';
+import { breakerMessage, runFailedMessage, type NotifyDriver } from '../integrations/notify';
 import type { LLMProvider } from '../llm/provider';
+import { logger } from '../logger';
 import { createPayment, type PaymentProvider } from '../payments';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import type {
@@ -31,6 +33,7 @@ import type {
 } from '../types';
 import type { MemoryProvider } from '../memory/provider';
 import { BRAIN_VERSION } from '../version';
+import { isAuthorizedHandshake } from './auth';
 import { createHttpHandler } from './http';
 import {
   parseAgentStatus,
@@ -78,6 +81,8 @@ export interface SocketServerOptions {
   llm?: LLMProvider;
   /** Driver email — channel inbound/outbound CS (Fase 11). */
   email?: EmailDriver;
+  /** Notifikasi founder (Fase 12) — run gagal / circuit breaker dari jalur socket. */
+  notify?: NotifyDriver;
 }
 
 /**
@@ -158,6 +163,35 @@ export async function startSocketServer(
     getIo: () => io,
     ...(cs ? { cs } : {}),
     ...(cs ? { widget: { baseUrl: config.csWidgetUrl, socketPath: config.socketPath } } : {}),
+    ...(config.authToken ? { authToken: config.authToken } : {}),
+    // /health diperkaya (Fase 12): driver aktif + jumlah run + ukuran DATA_DIR.
+    health: () => {
+      const latest = store?.listRuns(1)[0];
+      return {
+        drivers: {
+          llm: config.llmDriver,
+          memory: config.memoryDriver,
+          sandbox: config.sandboxDriver,
+          deploy: config.deployDriver,
+          payment: payment.id,
+          email: config.emailDriver,
+          social: config.socialDriver,
+          whatsapp: config.whatsappDriver,
+          notify: opts.notify?.id ?? 'stub',
+        },
+        ...(store
+          ? {
+              runs: {
+                total: store.countRuns(),
+                latest: latest
+                  ? { runId: latest.runId, status: latest.status, updatedAt: latest.updatedAt }
+                  : null,
+              },
+            }
+          : {}),
+        data: { dir: config.dataDir, bytes: dirSizeBytes(config.dataDir) },
+      };
+    },
   });
 
   // WSS: sertifikat TLS disediakan lewat env (BRAIN_TLS_CERT / BRAIN_TLS_KEY) —
@@ -182,10 +216,25 @@ export async function startSocketServer(
   });
   ioRef = io;
 
+  // Auth token (Fase 12): koneksi tanpa token tetap diterima sebagai kanal
+  // publik widget CS (`cs:widget_message`); aksi operator butuh token.
+  // Caddy VPS menyuntik `Authorization: Bearer <BRAIN_AUTH_TOKEN>` di host office.
+  io.use((socket, next) => {
+    socket.data.privileged = isAuthorizedHandshake(socket.handshake, config.authToken);
+    next();
+  });
+
+  /** true = ditolak (ack error sudah dikirim ke klien). */
+  function denyUnprivileged(socket: Socket, ack?: (r: unknown) => void): boolean {
+    if (!config.authToken || socket.data.privileged === true) return false;
+    ack?.({ ok: false, error: 'unauthorized: token required' });
+    return true;
+  }
+
   const offAgent = bus.onAgent((payload) => {
     const parsed = parseAgentStatus(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] agent:status_update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'agent:status_update DITOLAK (skema tidak valid)');
       return;
     }
     latestByAgent.set(parsed.payload.agentId, parsed.payload);
@@ -194,7 +243,7 @@ export async function startSocketServer(
   const offMilestone = bus.onMilestone((payload) => {
     const parsed = parseFirstSale(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] milestone:first_sale DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'milestone:first_sale DITOLAK (skema tidak valid)');
       return;
     }
     latestMilestones.push(parsed.payload);
@@ -203,7 +252,7 @@ export async function startSocketServer(
   const offDeploy = bus.onDeploy((payload) => {
     const parsed = parseDeployUpdate(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] deploy:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'deploy:update DITOLAK (skema tidak valid)');
       return;
     }
     latestDeploy = parsed.payload;
@@ -212,7 +261,7 @@ export async function startSocketServer(
   const offRevenue = bus.onRevenue((payload) => {
     const parsed = parseRevenueUpdate(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] revenue:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'revenue:update DITOLAK (skema tidak valid)');
       return;
     }
     latestRevenue = parsed.payload;
@@ -221,7 +270,7 @@ export async function startSocketServer(
   const offSocial = bus.onSocial((payload) => {
     const parsed = parseSocialPost(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] social:post DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'social:post DITOLAK (skema tidak valid)');
       return;
     }
     latestSocial.push(parsed.payload);
@@ -230,7 +279,7 @@ export async function startSocketServer(
   const offRetrieval = bus.onRetrieval((payload) => {
     const parsed = parseMemoryRetrieval(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] memory:retrieval DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'memory:retrieval DITOLAK (skema tidak valid)');
       return;
     }
     latestRetrievals.push(parsed.payload);
@@ -239,7 +288,7 @@ export async function startSocketServer(
   const offArtifacts = bus.onArtifacts((payload) => {
     const parsed = parseArtifacts(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] artifacts:ready DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'artifacts:ready DITOLAK (skema tidak valid)');
       return;
     }
     latestArtifacts = parsed.payload;
@@ -248,7 +297,7 @@ export async function startSocketServer(
   const offLead = bus.onLead((payload) => {
     const parsed = parseLeadUpdate(payload);
     if (!parsed.ok) {
-      console.warn(`[brain] lead:update DITOLAK (skema tidak valid): ${parsed.issues}`);
+      logger.warn({ issues: parsed.issues }, 'lead:update DITOLAK (skema tidak valid)');
       return;
     }
     io.emit('lead:update', parsed.payload);
@@ -295,6 +344,7 @@ export async function startSocketServer(
     // Snapshot on-demand: klien (re)connect menarik state terakhir sekali —
     // dipakai Theater untuk memulihkan viewport tanpa menunggu event berikutnya.
     socket.on('state:request', async (ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const memorySizes = memory ? await memory.sizes().catch(() => ({})) : {};
       const snapshot = {
         agents: [...latestByAgent.values()],
@@ -317,6 +367,7 @@ export async function startSocketServer(
     // SIMULATE PAYMENT (kartu 💳) — demo transaksi $29 tanpa akun gateway.
     // Driver aktif yang menentukan format event (stripe/midtrans/stub).
     socket.on('payment:simulate', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const runId =
         (input as { runId?: unknown } | undefined)?.runId &&
         typeof (input as { runId?: unknown }).runId === 'string'
@@ -360,6 +411,7 @@ export async function startSocketServer(
     });
 
     socket.on('control:halt', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const runId = (input as { runId?: unknown } | undefined)?.runId;
       control.halt(typeof runId === 'string' && runId ? runId : undefined);
       bus.agent(
@@ -377,6 +429,7 @@ export async function startSocketServer(
     });
 
     socket.on('control:resume', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const runId = (input as { runId?: unknown } | undefined)?.runId;
       control.resume(typeof runId === 'string' && runId ? runId : undefined);
       bus.agent(
@@ -395,6 +448,7 @@ export async function startSocketServer(
 
     // Daftar run durable (post-restart) — Theater dapat menampilkan run history.
     socket.on('run:list', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const limit = (input as { limit?: unknown } | undefined)?.limit;
       const runs = store?.listRuns(typeof limit === 'number' && limit > 0 ? limit : 20) ?? [];
       ack?.({ ok: true, runs });
@@ -402,6 +456,7 @@ export async function startSocketServer(
 
     // Resume run yang terputus (mis. daemon/VPS restart) dari checkpoint SQLite.
     socket.on('run:resume', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const runId = (input as { runId?: unknown } | undefined)?.runId;
       if (typeof runId !== 'string' || runId.length === 0) {
         ack?.({ ok: false, error: 'runId required' });
@@ -416,14 +471,24 @@ export async function startSocketServer(
         checkpointer: opts.checkpointer,
         store,
         ...(opts.leads ? { leads: opts.leads } : {}),
-      }).catch((err: unknown) => {
-        console.error(`[brain] resume ${runId} failed:`, err);
-      });
+      })
+        .then(({ state }) => {
+          if (state.fallbackTriggered) {
+            void opts.notify?.send(
+              breakerMessage(state.runId, `safe-build aktif setelah ${state.maxIterations}x QA`),
+            );
+          }
+        })
+        .catch((err: unknown) => {
+          logger.error({ err, runId }, 'resume run failed');
+          void opts.notify?.send(runFailedMessage(runId, err));
+        });
     });
 
     // EVENT REPLAY (kartu 10.4 — PRD §7): putar ulang run masa lalu dari event
     // log durable (`run_events`) ke klien peminta. Frame: start → event* → end.
     socket.on('run:replay', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const rec = input as
         { runId?: unknown; stepMs?: unknown; limit?: unknown; cancel?: unknown } | null | undefined;
 
@@ -500,6 +565,7 @@ export async function startSocketServer(
     });
 
     socket.on('founder:directive', async (prompt: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       if (typeof prompt !== 'string' || prompt.trim().length === 0) {
         ack?.({ ok: false, error: 'empty directive' });
         return;
@@ -513,9 +579,18 @@ export async function startSocketServer(
         checkpointer: opts.checkpointer,
         store,
         ...(opts.leads ? { leads: opts.leads } : {}),
-      }).catch((err: unknown) => {
-        console.error('[brain] autonomous run failed:', err);
-      });
+      })
+        .then(({ state }) => {
+          if (state.fallbackTriggered) {
+            void opts.notify?.send(
+              breakerMessage(state.runId, `safe-build aktif setelah ${state.maxIterations}x QA`),
+            );
+          }
+        })
+        .catch((err: unknown) => {
+          logger.error({ err }, 'autonomous run failed');
+          void opts.notify?.send(runFailedMessage('founder:directive', err));
+        });
     });
 
     /* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */
@@ -523,6 +598,7 @@ export async function startSocketServer(
     // founder:chat { conversationId, message } → PM agent → pm:reply (broadcast).
     // Ack konsisten dengan founder:directive: langsung `queued`, balasan menyusul.
     socket.on('founder:chat', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const rec = input as { conversationId?: unknown; message?: unknown } | null;
       const conversationId =
         typeof rec?.conversationId === 'string' ? rec.conversationId.trim() : '';
@@ -540,7 +616,7 @@ export async function startSocketServer(
         const turn = await briefing.handleTurn({ conversationId, message });
         const parsed = parseChatTurn(turn);
         if (!parsed.ok) {
-          console.warn(`[brain] pm:reply DITOLAK (skema tidak valid): ${parsed.issues}`);
+          logger.warn({ issues: parsed.issues }, 'pm:reply DITOLAK (skema tidak valid)');
           return;
         }
         io.emit('pm:reply', parsed.payload);
@@ -560,6 +636,7 @@ export async function startSocketServer(
 
     // Riwayat thread durable (reload/restart) — dipanggil UI saat mount/reconnect.
     socket.on('briefing:history', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
       if (!briefing || typeof conversationId !== 'string' || conversationId.trim().length === 0) {
         ack?.({ ok: false, error: 'conversationId required' });
@@ -571,6 +648,7 @@ export async function startSocketServer(
 
     // GO — compile thread jadi brief terstruktur (dipakai UI sebagai founder:directive).
     socket.on('brief:compile', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
       if (!briefing || typeof conversationId !== 'string' || conversationId.trim().length === 0) {
         ack?.({ ok: false, error: 'conversationId required' });
@@ -593,6 +671,7 @@ export async function startSocketServer(
 
     // cs:list → ringkasan inbox (lead + pesan terakhir + jumlah pesan).
     socket.on('cs:list', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       if (!cs) {
         ack?.({ ok: false, error: 'cs agent unavailable' });
         return;
@@ -608,6 +687,7 @@ export async function startSocketServer(
 
     // cs:history → transkrip satu percakapan (dipakai CS Inbox saat membuka thread).
     socket.on('cs:history', (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       const conversationId = (input as { conversationId?: unknown } | undefined)?.conversationId;
       if (!cs) {
         ack?.({ ok: false, error: 'cs agent unavailable' });
@@ -656,6 +736,7 @@ export async function startSocketServer(
 
     // cs:quote → aksi cepat CS Inbox: quote → payment link + kontrak PDF.
     socket.on('cs:quote', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       if (!cs) {
         ack?.({ ok: false, error: 'cs agent unavailable' });
         return;
@@ -685,6 +766,7 @@ export async function startSocketServer(
 
     // cs:sweep → jalankan follow-up engine sekarang (demo/e2e; scheduler tetap jalan).
     socket.on('cs:sweep', async (input: unknown, ack?: (r: unknown) => void) => {
+      if (denyUnprivileged(socket, ack)) return;
       if (!cs) {
         ack?.({ ok: false, error: 'cs agent unavailable' });
         return;

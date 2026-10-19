@@ -1,9 +1,13 @@
-# AutoOffice3D — office stack (PRD §7 Fase 10, disiapkan untuk soak Fase 12).
+# AutoOffice3D — office stack lokal (PRD §7 Fase 10, kontrak VPS Fase 12).
 #
 #   docker compose up --build
-#     → Theater  http://office.localhost
-#     → Brain    http://api.office.localhost (+ ws://localhost:4800/brain-server)
-#     → demo     http://localhost:4510+ (mapping port; wildcard *.demo.localhost di Fase 12)
+#     → Caddy      http://office.localhost  — SATU-SATUNYA entry (theater + brain)
+#                  http://cs.localhost      — kanal publik widget/kontrak CS
+#     → Brain      tanpa `ports:` — hanya dijangkau Caddy via network `office`
+#                  (path /brain-server, /widget/*, /cs/contracts/*, /demo/*, /health)
+#     → 9router    http://9router:20128/v1 — LLM gateway (internal, opsional)
+#     → demo       http://localhost:4510+ (mapping port host lokal;
+#                  wildcard demo di VPS: install docker-compose.vps.yml)
 #
 # Demo container (DEPLOY_DRIVER=docker) dibangun lewat socket Docker yang
 # di-mount ke Brain; container demo hidup di network `demo-net` — terpisah dari
@@ -13,6 +17,7 @@ name: autooffice3d
 services:
   brain:
     build: ./brain
+    restart: unless-stopped
     environment:
       PORT: 4800
       SOCKET_PATH: /brain-server
@@ -22,55 +27,93 @@ services:
       # probe dari dalam Brain tetap bisa menjangkau instance demo.
       DEPLOY_PUBLISH_HOST: 0.0.0.0
       DEPLOY_PROBE_HOST: host.docker.internal
+      # Fase 12: domain demo publik (label caddy-docker-proxy). Kosong di lokal.
+      DEMO_BASE_DOMAIN: ${DEMO_BASE_DOMAIN:-}
       LLM_DRIVER: ${LLM_DRIVER:-stub}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      # Gateway 9router (default service internal); override untuk API resmi.
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-http://9router:20128/v1}
       MODEL: ${MODEL:-claude-3-5-sonnet-latest}
       MEMORY_DRIVER: ${MEMORY_DRIVER:-lancedb}
+      # Fase 12: logging + notifikasi + auth token (kosong = terbuka, lokal).
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BRAIN_AUTH_TOKEN: ${BRAIN_AUTH_TOKEN:-}
+      NOTIFY_DRIVER: ${NOTIFY_DRIVER:-auto}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      # Widget & kontrak CS dirujuk dari host publik (Caddy), bukan port Brain.
+      CS_PUBLIC_BASE_URL: ${CS_PUBLIC_BASE_URL:-http://cs.localhost}
+      CS_WIDGET_URL: ${CS_WIDGET_URL:-http://cs.localhost}
       DOCKER_BUILDKIT: 1
-    ports:
-      - '4800:4800'
     volumes:
       - brain-data:/app/data
+      # Arsip backup (cron di VPS): `docker compose exec -T brain node scripts/backup.mjs --keep 14`
+      - ./backups:/app/backups
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - office
 
   theater:
     build: ./theater
+    restart: unless-stopped
     environment:
-      # Bridge socket dijalankan di browser (host) → pakai loopback host.
-      NEXT_PUBLIC_BRAIN_URL: http://localhost:4800
-    ports:
-      - '3001:3000'
+      # Bridge socket dijalankan di browser (host) → lewat Caddy, bukan :4800.
+      NEXT_PUBLIC_BRAIN_URL: ${NEXT_PUBLIC_BRAIN_URL:-http://office.localhost}
     depends_on:
       - brain
+    networks:
+      - office
+
+  9router:
+    image: decolua/9router:latest
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /app/data
+      PORT: '20128'
+      HOSTNAME: 0.0.0.0
+      # PRD §6.5: gateway hanya di network internal; kunci API tetap diwajibkan.
+      REQUIRE_API_KEY: ${NINE_ROUTER_REQUIRE_API_KEY:-true}
+      INITIAL_PASSWORD: ${NINE_ROUTER_INITIAL_PASSWORD:-ganti-sebelum-buka-dashboard}
+      AUTH_COOKIE_SECURE: ${NINE_ROUTER_AUTH_COOKIE_SECURE:-false}
+    volumes:
+      - 9router-data:/app/data
+    expose:
+      - '20128'
     networks:
       - office
 
   caddy:
     image: caddy:2-alpine
+    restart: unless-stopped
     depends_on:
       - brain
       - theater
     ports:
       - '80:80'
+    environment:
+      OFFICE_DOMAIN: ${OFFICE_DOMAIN:-office.localhost}
+      CS_DOMAIN: ${CS_DOMAIN:-cs.localhost}
+      BRAIN_AUTH_TOKEN: ${BRAIN_AUTH_TOKEN:-}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
-      # office: route ke brain/theater; demo-net: siap reverse-proxy ke
-      # container demo (wildcard *.demo.localhost — Fase 12).
+      # office: route ke brain/theater/9router; demo-net: reverse-proxy ke
+      # container demo (wildcard *.demo.* — lewat label caddy-docker-proxy di VPS).
       - office
       - demo-net
 
 volumes:
   brain-data:
+  9router-data:
   caddy-data:
   caddy-config:
 
 networks:
+  # `office` = jaringan internal (tanpa port publik) — hanya Caddy yang mengekspos
+  # jalur terbatas. `demo-net` terpisah dari office (isolasi §6.6).
   office:
   demo-net:
     name: demo-net
