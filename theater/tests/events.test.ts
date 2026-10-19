@@ -34,7 +34,8 @@ const validSale: FirstSalePayload = {
   customer: { city: 'San Francisco', country: 'US', maskedEmail: 'a***@x.io' },
   amount: 29,
   currency: 'USD',
-  stripeEventId: 'evt_1',
+  paymentProvider: 'stripe',
+  paymentEventId: 'evt_1',
   hasCustomers: true,
   timestamp: '2026-01-01T00:00:00.000Z',
 };
@@ -92,7 +93,8 @@ const validRevenue = {
   checkoutSessions: 3,
   grossRevenueArr: 29,
   salesCount: 1,
-  lastStripeEvent: 'checkout.session.completed · cus_1',
+  currency: 'USD',
+  lastEvent: 'checkout.session.completed · cus_1',
   signatureVerified: true,
   timestamp: '2026-01-01T00:00:00.000Z',
 };

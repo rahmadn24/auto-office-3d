@@ -8,7 +8,7 @@
 
 ```
 brain/    THE BRAIN — daemon Node/TS: LangGraph agent graph, LLM router, memory,
-          sandbox, integrasi (Stripe/GitHub/Vercel/email/sosial), durability
+          sandbox, integrasi (payment/GitHub/Vercel/email/sosial), durability
           (SQLite + LanceDB), socket.io telemetry. Port 4800, path /brain-server.
 theater/  THE THEATER — Next.js 14 App Router + React Three Fiber: HUD 3D isometrik,
           konsumsi event socket, store zustand. Dev port 3001.
@@ -18,7 +18,10 @@ scripts/  Tooling root (dev orchestrator).
 ```
 
 Poin masuk cepat: `brain/src/index.ts` (boot daemon) · `brain/src/graph/nodes.ts`
-(node graph) · `brain/src/server/socket.ts` (HTTP + socket.io) ·
+(node graph) · `brain/src/server/http.ts` (health/control/webhook/demo) ·
+`brain/src/server/socket.ts` (bootstrap + io handlers) ·
+`brain/src/payments/` (Payment Sentinel multi-provider: provider.ts + driver
+stripe/midtrans/stub/xendit + factory `createPayment`) ·
 `brain/src/briefing.ts` (Briefing Room: founder:chat/pm:reply, compile brief) ·
 `theater/components/briefing/BriefingRoom.tsx` (tab Briefing Room) ·
 `theater/app/layout.tsx` (BrainBridge socket sekali untuk semua tab) ·
@@ -53,8 +56,8 @@ Per paket sama saja: `npm --prefix brain run verify`, dst.
 
 ## Trello (tracking fase)
 
-Board `6ad1d2b83957007054c4f4c6`. List Done: `6ad1d304c1183a26bcbad9c6`; list Fase 8:
-`6ad3b850a3b3d4e0bf00cfd1`; list per fase 9–13 mengikuti pola yang sama. Alur tiap fase:
+Board `6ad1d2b83957007054c4f4c6`. List Done: `6ad1d304c1183a26bcbad9c6`; list Fase 9:
+`6ad3b85049a840e0a31bf792`; list per fase 10–13 mengikuti pola yang sama. Alur tiap fase:
 kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → merge `--no-ff` → push.
 
 ## Testing
@@ -63,20 +66,25 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
 - Tambah test untuk setiap fix; pola: `brain/tests/*.test.ts`, `theater/tests/*.test.ts`.
 - E2E smoke: `theater/scripts/e2e-smoke.mjs` — nyalakan brain stub + theater di port
   terpisah (4899/3101), DATA_DIR temporer, kirim directive dari UI, verifikasi
-  `agent:status_update` + ack UI. Port & timeout bisa di-override via env `E2E_*`.
+  `agent:status_update` + ack UI, lalu chat briefing + GO, lalu Simulate Payment
+  (`milestone:first_sale` driver stub + banner CELEBRATE). Port & timeout via env `E2E_*`.
 - Browser Playwright: `npx playwright install chromium` (cache `~/Library/Caches/ms-playwright`, rev chromium-1248).
 
 ## Jebakan yang sudah pernah menggigit
 
 - `next build` bersamaan `next dev` → konflik `.next`. Route aneh? `rm -rf theater/.next` + restart.
+- Vitest theater **tidak** me-resolve alias `@/*` untuk import runtime — di file
+  yang di-tes (`store/`, `lib/`) pakai path relatif; `import type '@/...'` aman
+  karena dihapus saat transform.
 - Disk sering mepet: cek `df -h /` sebelum install besar; cache `mediaanalysisd`
   (`~/Library/Caches/com.apple.mediaanalysisd*`) pernah tumbuh GB-an dan aman dibersihkan.
 - `npm` di mesin ini pakai persetujuan install-scripts (`allowScripts` di package.json);
   paket native (better-sqlite3, esbuild, fsevents) harus di-approve agar postinstall jalan.
 - Socket client: BrainBridge WAJIB di `app/layout.tsx` (bukan per-tab) supaya koneksi
   tidak drop saat pindah tab.
-- Stripe (jangan regresi): signature invalid saat secret terpasang → `401` +
-  `firstSale:false` tanpa menaikkan metrics; valid → `200` + sale.
+- Payment Sentinel (jangan regresi): signature invalid saat secret terpasang →
+  `401` + `firstSale:false` tanpa menaikkan metrics; valid → `200` + sale.
+  Route webhook mengikuti driver aktif: `/webhook/{stripe|midtrans|stub|xendit}`.
 
 ## Alur kerja yang diharapkan
 

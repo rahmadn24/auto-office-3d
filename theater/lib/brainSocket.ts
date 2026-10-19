@@ -276,9 +276,9 @@ export function connectBrain(): Socket {
   return socket;
 }
 
-/** SIMULATE WEBHOOK (kartu 💳) — minta Brain memancarkan transaksi $29 demo. */
+/** SIMULATE PAYMENT (kartu 💳) — pinta Brain memancarkan transaksi demo via driver aktif. */
 export function simulateWebhook(runId?: string): void {
-  socket?.emit('stripe:simulate', { runId: runId ?? 'simulated_run' });
+  socket?.emit('payment:simulate', { runId: runId ?? 'simulated_run' });
 }
 
 /**

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { formatMoney } from '@/lib/format';
+import { useBrain } from '@/store/brainStore';
 import { useOffice } from '@/store/officeStore';
 
 /** Chime fanfare Web Audio: akor naik C–E–G–C (triangle, envelope 0.5s). */
@@ -29,12 +31,13 @@ function playFanfare(ctx: AudioContext): void {
  * banner "FIRST CUSTOMER ACQUIRED", fanfare chime, dan tombol simulasi
  * `Trigger Celebrate ($29.00 ARR)` untuk demo tanpa backend.
  *
- * Pemicu otomatis `milestone:first_sale` dari Socket.io menyusul di Fase 3;
- * badge Stripe LIVE (panel HUD) menyusul di Fase 5.
+ * Banner menampilkan nominal & gateway dari `milestone:first_sale` terakhir
+ * (Stripe/Midtrans/stub — Fase 9) dengan fallback $29.00 untuk demo lokal.
  */
 export function CelebrationOverlay(): ReactNode {
   const celebrating = useOffice((s) => s.celebrating);
   const celebrateAll = useOffice((s) => s.celebrateAll);
+  const milestone = useBrain((s) => s.milestone);
   const [showBanner, setShowBanner] = useState(false);
   const audioRef = useRef<AudioContext | null>(null);
   const wasCelebrating = useRef(false);
@@ -77,10 +80,13 @@ export function CelebrationOverlay(): ReactNode {
       >
         <div className="rounded-lg border border-secondary/50 bg-surface-container-lowest/90 px-6 py-3 text-center shadow-[0_0_48px_-12px_rgba(78,222,163,0.55)] backdrop-blur">
           <div className="font-mono text-label-xs uppercase tracking-[0.28em] text-secondary">
-            Stripe webhook · paid ✓
+            {milestone ? `${milestone.paymentProvider} webhook` : 'payment webhook'} · paid ✓
           </div>
           <div className="mt-1 font-headline text-headline-md text-on-surface">
-            FIRST CUSTOMER ACQUIRED <span className="font-mono text-secondary">($29.00 ARR)</span>
+            FIRST CUSTOMER ACQUIRED{' '}
+            <span className="font-mono text-secondary">
+              ({milestone ? formatMoney(milestone.amount, milestone.currency) : '$29.00'} ARR)
+            </span>
           </div>
           <div className="mt-0.5 font-mono text-mono-label text-on-surface-variant">
             Milestone #5 — autonomous loop terbukti end-to-end

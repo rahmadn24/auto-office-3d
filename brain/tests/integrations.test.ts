@@ -5,11 +5,6 @@ import { LocalGitHub } from '../src/integrations/github';
 import { StubEmail } from '../src/integrations/email';
 import { OfflineHealthProbe } from '../src/integrations/health';
 import { StubSocial } from '../src/integrations/social';
-import {
-  StripeSentinel,
-  signStripePayload,
-  verifyStripeSignature,
-} from '../src/integrations/stripe';
 import { LocalVercel } from '../src/integrations/vercel';
 
 describe('GitHub Repository Provisioning (PRD §3.3)', () => {
@@ -61,78 +56,7 @@ describe('Health Check Probe (PRD §3.3)', () => {
   });
 });
 
-describe('Stripe signature verification (PRD §3.4)', () => {
-  const body = JSON.stringify({ id: 'evt_1', type: 'checkout.session.completed' });
-  const secret = 'whsec_test';
-
-  it('signature valid diterima, body dimanipulasi ditolak', () => {
-    const sig = signStripePayload(body, secret, 1_700_000_000);
-    expect(verifyStripeSignature(body, sig, secret, { now: 1_700_000_000 })).toBe(true);
-    expect(verifyStripeSignature(`${body} `, sig, secret, { now: 1_700_000_000 })).toBe(false);
-  });
-
-  it('tolak signature kedaluwarsa (lewat tolerance)', () => {
-    const sig = signStripePayload(body, secret, 1_700_000_000);
-    expect(
-      verifyStripeSignature(body, sig, secret, { now: 1_700_000_000 + 400, toleranceS: 300 }),
-    ).toBe(false);
-  });
-
-  it('tolak secret berbeda', () => {
-    const sig = signStripePayload(body, secret, 1_700_000_000);
-    expect(verifyStripeSignature(body, sig, 'whsec_other', { now: 1_700_000_000 })).toBe(false);
-  });
-});
-
-describe('Stripe Webhook Sentinel idempoten (PRD §3.4)', () => {
-  const secret = 'whsec_idem';
-  function makeEvent(id: string): { raw: string; sig: string } {
-    const raw = JSON.stringify({
-      id,
-      type: 'checkout.session.completed',
-      created: Math.floor(Date.now() / 1000),
-      data: { object: { amount_total: 2900, currency: 'usd', customer: 'cus_1' } },
-    });
-    return { raw, sig: signStripePayload(raw, secret) };
-  }
-
-  it('event ganda tidak memicu dua celebration', () => {
-    const sentinel = new StripeSentinel(secret);
-    const { raw, sig } = makeEvent('evt_same');
-    const first = sentinel.receive(raw, sig, 'run_a');
-    const second = sentinel.receive(raw, sig, 'run_a');
-    expect(first).not.toBeNull();
-    expect(second).toBeNull();
-    expect(sentinel.metrics().salesCount).toBe(1);
-    expect(sentinel.metrics().grossRevenueArr).toBe(29);
-  });
-
-  it('signature diverifikasi & flag disiarkan', () => {
-    const sentinel = new StripeSentinel(secret);
-    const { raw, sig } = makeEvent('evt_ok');
-    sentinel.receive(raw, sig, 'run_b');
-    expect(sentinel.lastSignatureVerified).toBe(true);
-    expect(sentinel.metrics().lastStripeEvent).toContain('checkout.session.completed');
-  });
-
-  it('secret terpasang + signature invalid → event ditolak tanpa mengubah metrik', () => {
-    const sentinel = new StripeSentinel(secret);
-    const { raw } = makeEvent('evt_forged');
-    const res = sentinel.receive(raw, 't=1,v1=deadbeef', 'run_c');
-    expect(res).toBeNull();
-    expect(sentinel.lastSignatureVerified).toBe(false);
-    expect(sentinel.metrics().salesCount).toBe(0);
-    expect(sentinel.metrics().grossRevenueArr).toBe(0);
-  });
-
-  it('tanpa secret (offline) event tetap diproses untuk demo', () => {
-    const sentinel = new StripeSentinel(undefined);
-    const { raw } = makeEvent('evt_offline');
-    const res = sentinel.receive(raw, '', 'run_d');
-    expect(res).not.toBeNull();
-    expect(sentinel.lastSignatureVerified).toBe(false);
-  });
-});
+/* Stripe/Midtrans/Stub Payment Provider → pindah ke tests/payments.test.ts (Fase 9). */
 
 describe('Social Campaign Dispatcher (PRD §3.4)', () => {
   it('dispatch menghasilkan post X (published) + Threads (scheduled)', async () => {

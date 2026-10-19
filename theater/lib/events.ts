@@ -62,6 +62,9 @@ export const AgentStatusSchema = z.object({
 });
 export type AgentStatusPayload = z.infer<typeof AgentStatusSchema>;
 
+export const PAYMENT_PROVIDERS = ['stripe', 'midtrans', 'xendit', 'stub'] as const;
+export type PaymentProviderId = (typeof PAYMENT_PROVIDERS)[number];
+
 export const FirstSaleSchema = z.object({
   runId: z.string().min(1),
   customer: z.object({
@@ -70,8 +73,9 @@ export const FirstSaleSchema = z.object({
     maskedEmail: z.string().min(1),
   }),
   amount: z.number().positive(),
-  currency: z.literal('USD'),
-  stripeEventId: z.string().min(1),
+  currency: z.enum(['USD', 'IDR']),
+  paymentProvider: z.enum(PAYMENT_PROVIDERS),
+  paymentEventId: z.string().min(1),
   hasCustomers: z.literal(true),
   timestamp: z.string().min(1),
 });
@@ -155,7 +159,8 @@ export const RevenueUpdateSchema = z.object({
   checkoutSessions: z.number().nonnegative(),
   grossRevenueArr: z.number().nonnegative(),
   salesCount: z.number().nonnegative(),
-  lastStripeEvent: z.string(),
+  currency: z.enum(['USD', 'IDR']),
+  lastEvent: z.string(),
   signatureVerified: z.boolean(),
   timestamp: z.string().min(1),
 });

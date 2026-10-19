@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PAYMENT_PROVIDERS } from '../types';
 import type {
   AgentStatusPayload,
   ArtifactsPayload,
@@ -76,8 +77,9 @@ export const FirstSaleSchema = z.object({
     maskedEmail: z.string().min(1),
   }),
   amount: z.number().positive(),
-  currency: z.literal('USD'),
-  stripeEventId: z.string().min(1),
+  currency: z.enum(['USD', 'IDR']),
+  paymentProvider: z.enum(PAYMENT_PROVIDERS),
+  paymentEventId: z.string().min(1),
   hasCustomers: z.literal(true),
   timestamp: z.string().min(1),
 });
@@ -145,7 +147,8 @@ export const RevenueUpdateSchema = z.object({
   checkoutSessions: z.number().nonnegative(),
   grossRevenueArr: z.number().nonnegative(),
   salesCount: z.number().nonnegative(),
-  lastStripeEvent: z.string(),
+  currency: z.enum(['USD', 'IDR']),
+  lastEvent: z.string(),
   signatureVerified: z.boolean(),
   timestamp: z.string().min(1),
 });

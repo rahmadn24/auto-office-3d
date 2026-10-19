@@ -7,7 +7,6 @@ import type { SocialDriver } from './types';
 import { LiveVercel, LocalVercel, type DeployDriver } from './vercel';
 
 export * from './types';
-export { verifyStripeSignature, signStripePayload, StripeSentinel } from './stripe';
 
 export function createGitHub(config: Config): GitHubDriver {
   return config.githubToken ? new LiveGitHub(config.githubToken) : new LocalGitHub();

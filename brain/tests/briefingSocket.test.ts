@@ -117,9 +117,10 @@ describe('Briefing Room via socket (Fase 8 — PRD §5.3)', () => {
     const milestone = new Promise<FirstSalePayload>((resolve) =>
       client.once('milestone:first_sale', resolve),
     );
-    client.emit('stripe:simulate', { runId: bundle.runId });
+    client.emit('payment:simulate', { runId: bundle.runId });
     const sale = await milestone;
     expect(sale.amount).toBe(29);
     expect(sale.hasCustomers).toBe(true);
+    expect(sale.paymentProvider).toBe('stub');
   }, 120_000);
 });
