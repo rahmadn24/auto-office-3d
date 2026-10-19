@@ -6,6 +6,9 @@ node_modules/
 # durable state (PRD v3.0 §2.1) — jangan pernah masuk git
 data/
 
+# arsip backup DATA_DIR (Fase 12) — dibuat cron, jangan masuk git
+backups/
+
 # artefak verifikasi browser (Playwright MCP)
 .playwright-mcp/
 

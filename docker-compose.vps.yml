@@ -1,0 +1,66 @@
+# AutoOffice3D — overlay PRODUKSI VPS (PRD §7 Fase 12).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build
+#
+# Perbedaan dari stack lokal:
+#   • Caddy memakai image caddy-docker-proxy → wildcard demo otomatis dari label
+#     `caddy=` yang dipasang Brain saat deploy (demo.<slug>.<DEMO_BASE_DOMAIN>).
+#   • TLS otomatis (Let's Encrypt) untuk OFFICE_DOMAIN/CS_DOMAIN/domain demo;
+#     butuh DNS A record + port 80/443 terbuka.
+#   • office.<domain> dilindungi basic auth Caddy DAN token Brain: Caddy
+#     menyuntik `Authorization: Bearer <BRAIN_AUTH_TOKEN>` ke upstream.
+#   • Log container dibatasi (json-file rotate) supaya disk VPS aman saat soak.
+#
+# Wajib diisi di .env (fail-fast bila kosong):
+#   OFFICE_DOMAIN, CS_DOMAIN, DEMO_BASE_DOMAIN, BRAIN_AUTH_TOKEN, OFFICE_BASIC_AUTH
+#   (OFFICE_BASIC_AUTH = "user hash" hasil `docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'`)
+services:
+  brain:
+    environment:
+      NODE_ENV: production
+      DEMO_BASE_DOMAIN: ${DEMO_BASE_DOMAIN:?set DEMO_BASE_DOMAIN (mis. demo.example.com)}
+      BRAIN_AUTH_TOKEN: ${BRAIN_AUTH_TOKEN:?set BRAIN_AUTH_TOKEN (token operator)}
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  theater:
+    environment:
+      NEXT_PUBLIC_BRAIN_URL: https://${OFFICE_DOMAIN:?set OFFICE_DOMAIN}
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  9router:
+    environment:
+      NODE_ENV: production
+      AUTH_COOKIE_SECURE: 'true'
+    # Dashboard 9router tidak diekspos publik; buka via SSH tunnel bila perlu:
+    #   ssh -L 20128:127.0.0.1:20128 user@vps   (lalu docker port 9router 20128)
+
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      # Caddyfile dasar (office + cs) + label Docker untuk domain demo.
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile
+      CADDY_INGRESS_NETWORKS: office,demo-net
+      OFFICE_DOMAIN: ${OFFICE_DOMAIN:?set OFFICE_DOMAIN}
+      CS_DOMAIN: ${CS_DOMAIN:?set CS_DOMAIN}
+      OFFICE_BASIC_AUTH: ${OFFICE_BASIC_AUTH:?set OFFICE_BASIC_AUTH (user + hash bcrypt)}
+      BRAIN_AUTH_TOKEN: ${BRAIN_AUTH_TOKEN:?set BRAIN_AUTH_TOKEN}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    volumes:
+      # Naikkan limit dasar (rate limit) — lihat deploy/caddy.Dockerfile + RUNBOOK.
+      - ./deploy/Caddyfile.vps:/etc/caddy/Caddyfile:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy-data:/data
+      - caddy-config:/config

@@ -1,9 +1,11 @@
 import type { AddressInfo } from 'node:net';
 
+import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { io as connectClient, type Socket as ClientSocket } from 'socket.io-client';
 
 import { loadConfig } from '../src/config';
+import { RunStore } from '../src/durability/store';
 import { EventBus } from '../src/events';
 import {
   StripeSentinel,
@@ -38,6 +40,52 @@ describe('server: health + Loop Controls HTTP endpoint', () => {
     const body = (await res.json()) as { ok: boolean; control: { haltedAll: boolean } };
     expect(body.ok).toBe(true);
     expect(body.control.haltedAll).toBe(false);
+  });
+
+  it('GET /health diperkaya (Fase 12): version/uptime/drivers/runs/data', async () => {
+    const res = await fetch(`${base}/health`);
+    const body = (await res.json()) as {
+      version: string;
+      uptimeSec: number;
+      startedAt: string;
+      drivers: Record<string, string>;
+      runs: { total: number; latest: unknown };
+      data: { dir: string; bytes: number } | null;
+    };
+    expect(body.version).toBeTruthy();
+    expect(body.uptimeSec).toBeGreaterThanOrEqual(0);
+    expect(new Date(body.startedAt).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    // Driver aktif apa adanya dari config (default offline/stub).
+    expect(body.drivers.payment).toBe('stub');
+    expect(body.drivers.deploy).toBe('local');
+    expect(body.drivers.notify).toBe('stub');
+    // Server tanpa store → runs kosong, tapi field tetap ada (kontrak stabil).
+    expect(body.runs).toEqual({ total: 0, latest: null });
+    expect(body.data?.dir).toBeTruthy();
+    expect(typeof body.data?.bytes).toBe('number');
+  });
+
+  it('GET /health melaporkan total + latest run dari store', async () => {
+    const db = new Database(':memory:');
+    const store = new RunStore(db);
+    store.startRun({ runId: 'run_health_1', directive: 'cek health', projectName: 'Health' });
+    const s2 = await startSocketServer(
+      { ...loadConfig(), port: 0, socketPath: '/brain-health-test' },
+      new EventBus(),
+      { store },
+    );
+    try {
+      const addr = s2.httpServer.address() as AddressInfo;
+      const body = (await (await fetch(`http://127.0.0.1:${addr.port}/health`)).json()) as {
+        runs: { total: number; latest: { runId: string; status: string } | null };
+      };
+      expect(body.runs.total).toBe(1);
+      expect(body.runs.latest?.runId).toBe('run_health_1');
+      expect(body.runs.latest?.status).toBe('running');
+    } finally {
+      await s2.close();
+      db.close();
+    }
   });
 
   it('POST /control/halt → GRAPH LOCKED di snapshot, /control/resume membukanya kembali', async () => {

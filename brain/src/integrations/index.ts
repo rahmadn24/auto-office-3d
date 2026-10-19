@@ -22,6 +22,7 @@ export function createDeploy(config: Config): DeployDriver {
       probeHost: config.deployProbeHost,
       widgetUrl: config.csWidgetUrl,
       widgetSocketPath: config.socketPath,
+      ...(config.demoBaseDomain ? { demoBaseDomain: config.demoBaseDomain } : {}),
     });
   }
   return new LocalVercel();

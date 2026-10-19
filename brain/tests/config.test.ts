@@ -116,4 +116,42 @@ describe('config & driver resolution', () => {
     expect(config.csPublicBaseUrl).toBe('http://localhost:5555');
     expect(config.csWidgetUrl).toBe('http://localhost:5555');
   });
+
+  it('Fase 12 — notifikasi: auto pilih Telegram/Discord bila kredensial ada, default stub', () => {
+    expect(loadConfig({}).notifyDriver).toBe('stub');
+
+    const telegram = loadConfig({ TELEGRAM_BOT_TOKEN: 'tg-x', TELEGRAM_CHAT_ID: '99' });
+    expect(telegram.notifyDriver).toBe('telegram');
+    expect(telegram.telegramBotToken).toBe('tg-x');
+    expect(telegram.telegramChatId).toBe('99');
+
+    const discord = loadConfig({ DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/x/y' });
+    expect(discord.notifyDriver).toBe('discord');
+
+    // Token Telegram tanpa chat id belum lengkap → tetap stub (bukan live separuh).
+    expect(loadConfig({ TELEGRAM_BOT_TOKEN: 'tg-x' }).notifyDriver).toBe('stub');
+  });
+
+  it('Fase 12 — NOTIFY_DRIVER live tanpa kredensial → fail fast saat boot', () => {
+    expect(() => loadConfig({ NOTIFY_DRIVER: 'telegram' })).toThrow(/TELEGRAM_BOT_TOKEN/);
+    expect(() => loadConfig({ NOTIFY_DRIVER: 'discord' })).toThrow(/DISCORD_WEBHOOK_URL/);
+    const ok = loadConfig({
+      NOTIFY_DRIVER: 'telegram',
+      TELEGRAM_BOT_TOKEN: 't',
+      TELEGRAM_CHAT_ID: 'c',
+    });
+    expect(ok.notifyDriver).toBe('telegram');
+  });
+
+  it('Fase 12 — LOG_LEVEL & BRAIN_AUTH_TOKEN diteruskan (fallback aman)', () => {
+    expect(loadConfig({}).logLevel).toBe('info');
+    expect(loadConfig({ LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+    expect(loadConfig({ LOG_LEVEL: 'verbose' }).logLevel).toBe('info');
+    expect(loadConfig({}).authToken).toBeUndefined();
+    expect(loadConfig({ BRAIN_AUTH_TOKEN: 'rahasia' }).authToken).toBe('rahasia');
+    expect(loadConfig({}).demoBaseDomain).toBeUndefined();
+    expect(loadConfig({ DEMO_BASE_DOMAIN: '.demo.example.com.' }).demoBaseDomain).toBe(
+      'demo.example.com',
+    );
+  });
 });

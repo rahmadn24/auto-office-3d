@@ -9,6 +9,8 @@ import { socketIoClientFile, WIDGET_JS, widgetDemoPage } from '../cs/widget';
 import { EventBus } from '../events';
 import { isDemoPayment, type PaymentProvider, type WebhookOutcome } from '../payments';
 import { formatMoney, type Telemetry } from '../types';
+import { BRAIN_VERSION } from '../version';
+import { isAuthorizedHeader } from './auth';
 
 /**
  * HTTP surface Brain (Fase 9 — hasil pemecahan `server/socket.ts`):
@@ -36,6 +38,23 @@ export interface HttpHandlerOptions {
   cs?: CsService;
   /** Konfigurasi widget channel (URL publik Brain + path socket). */
   widget?: { baseUrl: string; socketPath: string };
+  /**
+   * Info runtime untuk `/health` yang diperkaya (Fase 12): driver aktif,
+   * jumlah run, ukuran DATA_DIR. Dipanggil per request — selalu segar.
+   */
+  health?: () => HealthInfo;
+  /** Token auth aksi kontrol (Fase 12); kosong = terbuka (dev lokal). */
+  authToken?: string;
+}
+
+/** Bagian `/health` yang dikumpulkan bootstrap (config + store) — Fase 12. */
+export interface HealthInfo {
+  drivers: Record<string, string>;
+  runs?: {
+    total: number;
+    latest: { runId: string; status: string; updatedAt: string } | null;
+  };
+  data?: { dir: string; bytes: number };
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -81,7 +100,7 @@ function demoPage(bodyHtml: string, title = 'AutoOffice3D · Demo Checkout'): st
 export function createHttpHandler(
   opts: HttpHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
-  const { bus, control, payment, controlTelemetry, getIo, cs, widget } = opts;
+  const { bus, control, payment, controlTelemetry, getIo, cs, widget, health, authToken } = opts;
   const webhookPath = `/webhook/${payment.id}`;
   const demo = isDemoPayment(payment) ? payment : null;
 
@@ -110,9 +129,16 @@ export function createHttpHandler(
   return (req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
       const metrics = payment.metrics();
+      const extra = health?.();
       json(res, 200, {
         ok: true,
         service: 'autooffice3d-brain',
+        version: BRAIN_VERSION,
+        uptimeSec: Math.round(process.uptime()),
+        startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+        drivers: extra?.drivers ?? {},
+        runs: extra?.runs ?? { total: 0, latest: null },
+        data: extra?.data ?? null,
         control: control.snapshot(),
         payment: {
           provider: payment.id,
@@ -126,6 +152,11 @@ export function createHttpHandler(
 
     if (req.method === 'POST' && (req.url === '/control/halt' || req.url === '/control/resume')) {
       const path = req.url;
+      // Fase 12: aksi kontrol butuh token bila BRAIN_AUTH_TOKEN di-set.
+      if (!isAuthorizedHeader(req.headers.authorization, authToken)) {
+        json(res, 401, { ok: false, error: 'unauthorized: token required' });
+        return;
+      }
       void readBody(req).then((body) => {
         let runId: string | undefined;
         try {

@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 
 import { z } from 'zod';
 
+import { resolveLogLevel, type LogLevel } from './logger';
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4800),
   SOCKET_PATH: z.string().default('/brain-server'),
@@ -77,6 +79,25 @@ const EnvSchema = z.object({
   // Guardrails (PRD §3.2 & §6.4)
   MAX_ITERATIONS: z.coerce.number().int().positive().default(5),
   TOKEN_BUDGET: z.coerce.number().int().positive().default(250_000),
+
+  /**
+   * Domain dasar demo publik (Fase 12) — container demo diberi label caddy
+   * `demo.<slug>.<domain>` untuk caddy-docker-proxy. Kosong = port host saja.
+   */
+  DEMO_BASE_DOMAIN: z.string().optional(),
+
+  // Fase 12 — operasional VPS (PRD §7): logging, notifikasi founder, auth.
+  /** Level log terstruktur (trace/debug/info/warn/error/fatal/silent). */
+  LOG_LEVEL: z.string().optional(),
+  NOTIFY_DRIVER: z.enum(['auto', 'stub', 'telegram', 'discord']).default('auto'),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
+  DISCORD_WEBHOOK_URL: z.string().optional(),
+  /**
+   * Token auth untuk aksi privileged (kontrol run, founder, CS operator).
+   * Kosong = terbuka (dev lokal / e2e). Di VPS wajib diisi (PRD §6.5).
+   */
+  BRAIN_AUTH_TOKEN: z.string().optional(),
 });
 
 export type RawEnv = z.input<typeof EnvSchema>;
@@ -128,6 +149,17 @@ export interface Config {
   csWidgetUrl: string;
   maxIterations: number;
   tokenBudget: number;
+  /** Fase 12 — log level terstruktur (pino). */
+  logLevel: LogLevel;
+  /** Fase 12 — notifikasi founder keluar (soak tanpa ditunggui). */
+  notifyDriver: 'stub' | 'telegram' | 'discord';
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  discordWebhookUrl?: string;
+  /** Fase 12 — token auth aksi privileged (kosong = terbuka, khusus lokal). */
+  authToken?: string;
+  /** Fase 12 — domain dasar demo publik (label caddy-docker-proxy). */
+  demoBaseDomain?: string;
 }
 
 /**
@@ -182,6 +214,15 @@ export function loadConfig(
         ? 'live'
         : 'stub'
       : e.WHATSAPP_DRIVER;
+  // Fase 12 — notifikasi founder: auto pilih channel yang kredensialnya lengkap.
+  const notifyDriver =
+    e.NOTIFY_DRIVER === 'auto'
+      ? e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID
+        ? 'telegram'
+        : e.DISCORD_WEBHOOK_URL
+          ? 'discord'
+          : 'stub'
+      : e.NOTIFY_DRIVER;
   const csPublicBaseUrl = (e.CS_PUBLIC_BASE_URL ?? `http://localhost:${e.PORT}`).replace(
     /\/+$/,
     '',
@@ -224,6 +265,12 @@ export function loadConfig(
     problems.push(
       'WHATSAPP_DRIVER=live butuh WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_VERIFY_TOKEN',
     );
+  }
+  if (notifyDriver === 'telegram' && !(e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID)) {
+    problems.push('NOTIFY_DRIVER=telegram butuh TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID');
+  }
+  if (notifyDriver === 'discord' && !e.DISCORD_WEBHOOK_URL) {
+    problems.push('NOTIFY_DRIVER=discord butuh DISCORD_WEBHOOK_URL');
   }
   if (problems.length > 0) {
     throw new Error(`Invalid environment configuration — ${problems.join('; ')}`);
@@ -275,5 +322,12 @@ export function loadConfig(
     csWidgetUrl: (e.CS_WIDGET_URL ?? csPublicBaseUrl).replace(/\/+$/, ''),
     maxIterations: e.MAX_ITERATIONS,
     tokenBudget: e.TOKEN_BUDGET,
+    logLevel: resolveLogLevel(e.LOG_LEVEL),
+    notifyDriver,
+    telegramBotToken: e.TELEGRAM_BOT_TOKEN,
+    telegramChatId: e.TELEGRAM_CHAT_ID,
+    discordWebhookUrl: e.DISCORD_WEBHOOK_URL,
+    authToken: e.BRAIN_AUTH_TOKEN,
+    demoBaseDomain: e.DEMO_BASE_DOMAIN?.replace(/^\.+|\.+$/g, ''),
   };
 }

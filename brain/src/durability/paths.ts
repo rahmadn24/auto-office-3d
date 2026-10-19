@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /**
@@ -36,4 +36,28 @@ export function ensureDataDir(dataDir: string): DataPaths {
   const paths = dataPaths(dataDir);
   mkdirSync(paths.root, { recursive: true, mode: 0o700 });
   return paths;
+}
+
+/**
+ * Ukuran total folder DATA_DIR dalam byte (untuk `/health` — operator soak
+ * ingin lihat pertumbuhan disk tanpa masuk container). Error baca apa pun
+ * di-skip (bukan kondisi fatal) dan folder tak ada → 0.
+ */
+export function dirSizeBytes(root: string): number {
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true, recursive: true });
+  } catch {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    try {
+      total += statSync(join(entry.parentPath ?? root, entry.name)).size;
+    } catch {
+      // File hilang di tengah walk (SQLite WAL rotate, dll) — abaikan.
+    }
+  }
+  return total;
 }

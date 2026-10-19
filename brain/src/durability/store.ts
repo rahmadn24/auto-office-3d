@@ -216,6 +216,12 @@ export class RunStore {
     return rows.map(toRun);
   }
 
+  /** Jumlah run tersimpan (dipakai `/health` — Fase 12). */
+  countRuns(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM runs').get() as { n: number };
+    return row.n;
+  }
+
   listEvents(runId: string, limit = 200): RunEventRecord[] {
     const rows = this.db
       .prepare('SELECT * FROM run_events WHERE run_id = ? ORDER BY id DESC LIMIT ?')

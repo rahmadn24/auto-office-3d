@@ -41,6 +41,12 @@ export interface DockerDeployOptions {
   commandTimeoutMs?: number;
   /** URL publik Brain untuk widget CS di halaman produk (Fase 11). */
   widgetUrl?: string;
+  /**
+   * Domain dasar demo publik (Fase 12) — bila diisi, container demo diberi
+   * label `caddy` untuk caddy-docker-proxy: `demo.<slug>.<domain>`.
+   * Kosong = hanya mapping port host (dev lokal).
+   */
+  demoBaseDomain?: string;
   /** Path socket Brain (`/brain-server`) yang dipakai widget. */
   widgetSocketPath?: string;
 }
@@ -147,6 +153,7 @@ export class DockerDeploy implements DeployDriver {
   private readonly pickPort: (start: number, end: number) => Promise<number>;
   private readonly probeHealth: (url: string) => Promise<boolean>;
   private readonly workRoot: string;
+  private readonly demoBaseDomain?: string;
   private readonly keepContext: boolean;
   private readonly widgetUrl?: string;
   private readonly widgetSocketPath?: string;
@@ -166,6 +173,7 @@ export class DockerDeploy implements DeployDriver {
     this.keepContext = options.keepContext ?? false;
     this.widgetUrl = options.widgetUrl;
     this.widgetSocketPath = options.widgetSocketPath;
+    this.demoBaseDomain = options.demoBaseDomain?.replace(/^\.+|\.+$/g, '');
   }
 
   async deploy(input: DeployInput): Promise<DeployResult> {
@@ -330,6 +338,15 @@ export class DockerDeploy implements DeployDriver {
         // Siap untuk Caddy wildcard Fase 12 (label dibaca caddy-docker-proxy).
         '--label',
         `autooffice3d.route=demo.${slug}.localhost`,
+        ...(this.demoBaseDomain
+          ? [
+              // caddy-docker-proxy: host dinamis per demo + upstream container.
+              '--label',
+              `caddy=demo.${slug}.${this.demoBaseDomain}`,
+              '--label',
+              `caddy.reverse_proxy={{upstreams ${stack.port}}}`,
+            ]
+          : []),
         // Isolasi §6.6: container demo tidak boleh menjangkau host (Brain,
         // 9router) lewat nama magic Docker Desktop; tanpa volume → DATA_DIR
         // tidak pernah ter-mount.

@@ -100,6 +100,8 @@ describe('DockerDeploy — DEPLOY_DRIVER=docker (kartu 10.2 & 10.3)', () => {
       expect(run).toContain('autooffice3d.slug=landing-demo');
       expect(run).toContain('autooffice3d.preset=landing');
       expect(run).toContain('autooffice3d.run=run_1');
+      // Tanpa DEMO_BASE_DOMAIN → tidak ada label caddy-docker-proxy (dev lokal).
+      expect(run).not.toContain('caddy=');
       // Isolasi §6.6: nama magic host diblokir, tanpa volume/tanpa socket.
       expect(run).toContain('--add-host=host.docker.internal:0.0.0.0');
       expect(run).toContain('--add-host=gateway.docker.internal:0.0.0.0');
@@ -117,6 +119,37 @@ describe('DockerDeploy — DEPLOY_DRIVER=docker (kartu 10.2 & 10.3)', () => {
       const provenance = await readFile(join(contextDir, 'codegen', 'provenance.json'), 'utf8');
       expect(provenance).toContain('"preset": "landing"');
       expect(provenance).toContain('"runId": "run_1"');
+    });
+  });
+
+  it('DEMO_BASE_DOMAIN diisi → label caddy-docker-proxy (wildcard Fase 12)', async () => {
+    await withWorkRoot(async (workRoot) => {
+      const { exec, calls } = makeExec();
+      const deploy = new DockerDeploy({
+        exec,
+        workRoot,
+        keepContext: true,
+        pickPort: async () => 4599,
+        probeHealth: async () => true,
+        healthIntervalMs: 1,
+        demoBaseDomain: 'demo.example.com',
+      });
+
+      const result = await deploy.deploy({
+        slug: 'landing-demo',
+        projectName: 'Landing Demo',
+        runId: 'run_caddy',
+        preset: 'landing',
+        directive: 'landing page',
+        files: ARTIFACTS,
+      });
+      expect(result.status).toBe('ready');
+
+      const run = calls.find((cmd) => cmd[0] === 'docker' && cmd[1] === 'run')?.join(' ') ?? '';
+      expect(run).toContain('caddy=demo.landing-demo.demo.example.com');
+      expect(run).toContain('caddy.reverse_proxy={{upstreams 4173}}');
+      // Label lama tetap ada (observability + kompat).
+      expect(run).toContain('autooffice3d.route=demo.landing-demo.localhost');
     });
   });
 

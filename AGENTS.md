@@ -37,8 +37,13 @@ omnichannel lead + quote/kontrak + sweep follow-up) ·
 (playback event replay) · `theater/app/layout.tsx` (BrainBridge socket sekali
 untuk semua tab) · `theater/store/brainStore.ts` (state dari event) ·
 `brain/src/version.ts` (BRAIN_VERSION — sumber tunggal, theater membacanya dari
-handshake `system:hello`) · `docker-compose.yml` + `deploy/Caddyfile` +
-`brain/Dockerfile` + `theater/Dockerfile` (office stack, Fase 10/soak).
+handshake `system:hello`) · `brain/src/logger.ts` (pino terstruktur, level
+`LOG_LEVEL`) · `brain/src/integrations/notify.ts` (Telegram/Discord, stub default) ·
+`brain/src/server/auth.ts` (token privileged socket/HTTP) ·
+`scripts/backup.mjs` + `deploy/RUNBOOK.md` (backup cron, soak, go-live VPS) ·
+`docker-compose.yml` + `docker-compose.vps.yml` + `deploy/Caddyfile(.vps)` +
+`deploy/caddy.Dockerfile` + `brain/Dockerfile` + `theater/Dockerfile`
+(office stack lokal/VPS, Fase 10/12).
 
 ## Perintah (root = paling gampang)
 
@@ -50,6 +55,8 @@ handshake `system:hello`) · `docker-compose.yml` + `deploy/Caddyfile` +
 | `npm run build` | `next build` theater (JANGAN bareng `npm run dev`) |
 | `npm run e2e` | E2E smoke browser (brain stub + theater + Chrome; butuh `npx playwright install chromium`) |
 | `npm run e2e:docker` | Smoke Docker Desktop: 3 preset → produk ter-deploy bisa diakses + isolasi + spin down (butuh Docker hidup + ~1 GB ruang) |
+| `npm run backup` | Backup DATA_DIR → tar.gz + checksum + retensi (`--data/--out/--keep`; `--restore <arsip> --target <dir>`) |
+| `npm run check:9router` | Verifikasi headless 9router (`--url/--key/--model`) — dipakai di compose/VPS |
 
 Per paket sama saja: `npm --prefix brain run verify`, dst.
 
@@ -112,6 +119,23 @@ kerjakan di branch fase → `npm run verify` hijau → centang AC di kartu → m
   `require.resolve('socket.io-client/dist/...')`.
 - `cs:list`/`cs:history` butuh payload objek pada emit (`emit(event, {}, cb)`) —
   `state:request` justru ack tunggal tanpa payload (`emit(event, cb)`).
+- Auth Fase 12: `BRAIN_AUTH_TOKEN` kosong = semua privileged (lokal). Dengan token,
+  socket tanpa token tetap connect tapi hanya boleh `cs:widget_message`; Caddy VPS
+  wajib menyuntik `Authorization: Bearer <token>` ke upstream brain (lihat
+  `deploy/Caddyfile.vps`). Jangan bikin handler operator baru tanpa
+  `denyUnprivileged(...)`.
+- Logging Fase 12: jalur server/worker pakai `logger` (`brain/src/logger.ts`), bukan
+  `console.*`; level tak dikenal fallback `info` (tidak boleh menggagalkan boot).
+- Compose VPS: `deploy/Caddyfile.vps` menimpa mount `/etc/caddy/Caddyfile` dari base
+  (merge volume per target); `OFFICE_BASIC_AUTH` berisi hash bcrypt → **kutip tunggal**
+  di `.env` supaya `$` tidak diinterpolasi compose. Validasi tanpa menarik image:
+  `docker compose -f docker-compose.yml -f docker-compose.vps.yml config --quiet`.
+- 9router: dashboard jangan pernah di-publish publik (loopback + SSH tunnel);
+  verifikasi headless `npm run check:9router -- --url http://9router:20128 --key …`
+  (dari dalam network office / container brain).
+- Backup Fase 12: `scripts/backup.mjs` memverifikasi checksum saat restore; jangan
+  pernah restore ke DATA_DIR yang sedang ditulis daemon (stop brain dulu). Cron VPS
+  memakai `docker compose exec -T brain node scripts/backup.mjs --keep 14`.
 
 ## Alur kerja yang diharapkan
 
