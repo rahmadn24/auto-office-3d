@@ -6,11 +6,14 @@
  *   1. Nyalakan Brain (LLM stub, memori in-process, DATA_DIR temporer) :4899.
  *   2. Nyalakan Theater (`next dev`) :3101.
  *   3. Buka Chrome headless → tunggu badge "SOCKET.IO CONNECTED".
- *   4. Kirim directive founder via FounderCommandBar.
+ *   4. Kirim directive founder via FounderCommandBar (fast-path).
  *   5. Verifikasi E2E: observer socket mendengar `agent:status_update` dari Brain
  *      (directive dari UI benar-benar memulai pipeline) + UI menandai directive
  *      ter-queue (counter riwayat "↺ 1").
- *   6. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
+ *   6. Briefing Room (Fase 8): buka /briefing → chat Founder→PM dari UI →
+ *      observer mendengar `pm:reply` → tombol GO mengompilasi brief dan
+ *      mengirim `founder:directive` (run otonom kedua).
+ *   7. Matikan semua proses anak + hapus data temporer. Exit code 0/1.
  *
  * Env: E2E_BRAIN_PORT (4899), E2E_THEATER_PORT (3101), E2E_TIMEOUT_MS (150000),
  *      E2E_VERBOSE=0 untuk senyapkan log service.
@@ -124,6 +127,7 @@ async function main() {
 
     // Observer socket: bukti bebas-DOM bahwa directive dari UI memulai pipeline.
     const statusEvents = [];
+    const pmReplies = [];
     const observer = io(`http://127.0.0.1:${BRAIN_PORT}`, {
       path: '/brain-server',
       transports: ['websocket'],
@@ -132,7 +136,11 @@ async function main() {
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const pageConsole = [];
+      page.on('console', (msg) => pageConsole.push(`${msg.type()}: ${msg.text()}`));
+      page.on('pageerror', (err) => pageConsole.push(`pageerror: ${err.message}`));
       observer.on('agent:status_update', (payload) => statusEvents.push(payload));
+      observer.on('pm:reply', (payload) => pmReplies.push(payload));
 
       await page.goto(`http://127.0.0.1:${THEATER_PORT}`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(
@@ -162,6 +170,66 @@ async function main() {
         { timeout: 10_000 },
       );
       console.log('✓ directive ter-queue di founder command bar (riwayat ↺ 1)');
+
+      // ── Briefing Room (Fase 8): chat Founder→PM + GO dari UI ───────────────
+      await page.goto(`http://127.0.0.1:${THEATER_PORT}/briefing`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForFunction(
+        () => document.body.innerText.includes('SOCKET.IO CONNECTED'),
+        undefined,
+        { timeout: 30_000 },
+      );
+
+      const goButton = page.getByRole('button', { name: /GO — mulai run otonom/ });
+      if (!(await goButton.isDisabled())) {
+        throw new Error('tombol GO harus disabled saat thread kosong');
+      }
+
+      const chatInput = page.locator('input[aria-label="Tulis pesan untuk PM"]');
+      await chatInput.fill('e2e briefing — target freelancer, fitur invoice + checkout stripe');
+      await chatInput.press('Enter');
+      console.log('» pesan briefing dikirim dari UI (founder:chat)');
+
+      const chatDeadline = Date.now() + 30_000;
+      while (pmReplies.length === 0 && Date.now() < chatDeadline) await sleep(250);
+      if (pmReplies.length === 0) {
+        throw new Error('tidak ada pm:reply dari brain setelah founder:chat dikirim');
+      }
+      const reply = pmReplies[0];
+      if (reply?.role !== 'agent' || reply?.channel !== 'briefing' || !reply?.message) {
+        throw new Error(`pm:reply tidak sesuai kontrak ChatTurnPayload: ${JSON.stringify(reply)}`);
+      }
+      await page.waitForFunction(
+        (snippet) => document.body.innerText.includes(snippet),
+        reply.message.slice(0, 32),
+        { timeout: 10_000 },
+      );
+      console.log(`✓ pm:reply ter-render di UI — "${reply.message.slice(0, 48)}…"`);
+
+      await goButton.click();
+      try {
+        await page.waitForFunction(
+          () => document.body.innerText.toLowerCase().includes('brief terkompilasi'),
+          undefined,
+          { timeout: 20_000 },
+        );
+      } catch (err) {
+        const text = await page
+          .evaluate(() => document.body.innerText)
+          .catch(() => '(gagal membaca body)');
+        console.error(`--- DEBUG body setelah GO ---\n${text.slice(0, 1600)}`);
+        console.error(`--- DEBUG console browser ---\n${pageConsole.slice(-15).join('\n')}`);
+        throw err;
+      }
+      await page.waitForFunction(
+        () => document.body.innerText.toLowerCase().includes('run otonom berjalan'),
+        undefined,
+        { timeout: 20_000 },
+      );
+      console.log(
+        '✓ GO — brief terkompilasi terkirim sebagai founder:directive (run otonom jalan)',
+      );
     } finally {
       observer.close();
       await browser.close().catch(() => {});

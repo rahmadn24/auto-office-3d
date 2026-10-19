@@ -1,7 +1,10 @@
 import type { Embedder } from './embeddings';
 import {
   SIMILARITY_THRESHOLD,
+  matchesWhere,
+  sortBySeq,
   type MemoryHit,
+  type MemoryListQuery,
   type MemoryNamespace,
   type MemoryProvider,
   type MemoryRecord,
@@ -58,6 +61,17 @@ export class InMemoryVectorStore implements MemoryProvider {
     const out: Record<string, number> = {};
     for (const [ns, bucket] of this.namespaces) out[ns] = bucket.size;
     return out;
+  }
+
+  /** Daftar record kronologis (Briefing Room) — filter metadata + urut `seq`. */
+  async list(namespace: MemoryNamespace, query: MemoryListQuery = {}): Promise<MemoryRecord[]> {
+    const bucket = this.namespaces.get(namespace);
+    if (!bucket) return [];
+    const records: MemoryRecord[] = [];
+    for (const entry of bucket.values()) {
+      if (matchesWhere(entry.record, query.where)) records.push(entry.record);
+    }
+    return sortBySeq(records).slice(0, query.limit ?? 200);
   }
 
   static readonly threshold = SIMILARITY_THRESHOLD;

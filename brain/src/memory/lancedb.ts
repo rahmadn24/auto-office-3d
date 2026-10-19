@@ -5,7 +5,10 @@ import type { Connection, Table, VectorQuery } from '@lancedb/lancedb';
 import type { Embedder } from './embeddings';
 import {
   SIMILARITY_THRESHOLD,
+  matchesWhere,
+  sortBySeq,
   type MemoryHit,
+  type MemoryListQuery,
   type MemoryNamespace,
   type MemoryProvider,
   type MemoryRecord,
@@ -133,6 +136,31 @@ export class LanceDbMemory implements MemoryProvider {
       if (metadata && Object.keys(metadata).length > 0) hit.metadata = metadata;
       return hit;
     });
+  }
+
+  /** Daftar record kronologis (Briefing Room) — scan tabel + filter metadata in-process. */
+  async list(namespace: MemoryNamespace, query: MemoryListQuery = {}): Promise<MemoryRecord[]> {
+    const table = await this.table(namespace);
+    if (!table) return [];
+    let rows: RawRow[];
+    try {
+      rows = (await table.query().toArray()) as RawRow[];
+    } catch {
+      return [];
+    }
+    const records: MemoryRecord[] = [];
+    for (const row of rows) {
+      const record: MemoryRecord = { id: row.id, text: row.text };
+      if (row.metadata) {
+        try {
+          record.metadata = JSON.parse(row.metadata) as Record<string, string | number | boolean>;
+        } catch {
+          // metadata korup → record tetap terpakai tanpa filter metadata
+        }
+      }
+      if (matchesWhere(record, query.where)) records.push(record);
+    }
+    return sortBySeq(records).slice(0, query.limit ?? 200);
   }
 
   async sizes(): Promise<Record<string, number>> {

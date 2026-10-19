@@ -214,6 +214,43 @@ export const AGENT_HOME_ZONE: Record<AgentId, TargetZone> = {
   marketing_agent: 'marketing_studio',
 };
 
+/* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */
+
+export const CHAT_CHANNELS = ['briefing', 'cs_widget', 'cs_whatsapp', 'cs_email'] as const;
+export type ChatChannel = (typeof CHAT_CHANNELS)[number];
+
+export const CHAT_AGENT_IDS = ['pm_agent', 'cs_agent'] as const;
+export type ChatAgentId = (typeof CHAT_AGENT_IDS)[number];
+
+/** Satu turn percakapan `founder:chat` → `pm:reply` (PRD §5.3, ChatTurnPayload). */
+export interface ChatTurnPayload {
+  conversationId: string;
+  channel: ChatChannel;
+  role: 'human' | 'agent';
+  agentId?: ChatAgentId;
+  message: string;
+  /** Recall dari vector memory (briefing + pm-memory). */
+  citations?: string[];
+  timestamp: string;
+}
+
+export const BRIEF_PRESETS = ['landing', 'saas-fullstack', 'custom-app'] as const;
+export type BriefPreset = (typeof BRIEF_PRESETS)[number];
+
+/** Hasil `brief:compile` (tombol GO) — brief terstruktur dari thread briefing (Fase 8). */
+export interface BriefPayload {
+  conversationId: string;
+  projectName: string;
+  audience: string;
+  features: string[];
+  preset: BriefPreset;
+  pricing: string;
+  summary: string;
+  /** Prompt final untuk `founder:directive` (brief + konteks diskusi). */
+  directive: string;
+  timestamp: string;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

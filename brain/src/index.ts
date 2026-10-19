@@ -1,8 +1,10 @@
+import { BriefingService } from './briefing';
 import { loadConfig } from './config';
 import { createCheckpointer, openOfficeDb, RunStore } from './durability/store';
 import { ensureDataDir } from './durability/paths';
 import { EventBus } from './events';
 import { StripeSentinel } from './integrations';
+import { createLLM } from './llm';
 import { createMemory } from './memory';
 import { runAutonomous, seedMemory } from './run';
 import { startSocketServer } from './server/socket';
@@ -33,11 +35,17 @@ async function main(): Promise<void> {
   // (untuk jumlah vektor di snapshot) dan tiap run otonom.
   const memory = createMemory(config);
   await seedMemory(memory);
+
+  // Fase 8 — Briefing Room: percakapan Founder↔PM (LLM task `briefing`),
+  // durable di namespace `briefing`, GO → compile brief → founder:directive.
+  const briefing = new BriefingService({ memory, llm: createLLM(config) });
+
   const server = await startSocketServer(config, bus, {
     sentinel,
     memory,
     store,
     checkpointer,
+    briefing,
   });
 
   console.log('┌──────────────────────────────────────────────────────────────┐');

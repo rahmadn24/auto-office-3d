@@ -1,6 +1,12 @@
 import { codeBundleFiles } from '../safeBuild';
 import { slugify } from '../slug';
-import { estimateTokens, type LLMProvider, type LLMRequest, type LLMResult } from './provider';
+import {
+  estimateTokens,
+  heuristicBriefDraft,
+  type LLMProvider,
+  type LLMRequest,
+  type LLMResult,
+} from './provider';
 
 function titleCase(input: string): string {
   return input
@@ -22,7 +28,14 @@ export class StubLLM implements LLMProvider {
   readonly model = 'deterministic-stub-v1';
 
   async complete(request: LLMRequest): Promise<LLMResult> {
-    const text = request.task === 'prd' ? prdDocument(request) : codeBundle(request);
+    const text =
+      request.task === 'prd'
+        ? prdDocument(request)
+        : request.task === 'code'
+          ? codeBundle(request)
+          : request.task === 'brief'
+            ? briefDraft(request)
+            : briefingReply(request);
     const inputTokens =
       estimateTokens(request.prompt) + estimateTokens(JSON.stringify(request.context));
     const outputTokens = estimateTokens(text);
@@ -106,4 +119,31 @@ function prdDocument(request: LLMRequest): string {
 
 function codeBundle(request: LLMRequest): string {
   return JSON.stringify({ files: codeBundleFiles(slugify(request.context.projectName)) }, null, 2);
+}
+
+/**
+ * Balasan PM Briefing deterministik (Fase 8) — referensi pesan terakhir +
+ * pertanyaan klarifikasi tetap; memori yang ter-recall ikut dikutip.
+ */
+function briefingReply(request: LLMRequest): string {
+  const message = request.prompt.trim().replace(/\s+/g, ' ');
+  const short = message.length > 96 ? `${message.slice(0, 96)}…` : message;
+  const recalled = request.context.retrieved ?? [];
+  const lines = [
+    `Noted — "${short}". Sebelum saya kunci brief-nya, tiga hal ini dulu:`,
+    '',
+    '1. Audience utama versi pertama siapa (indie hacker, agensi, atau tim B2B)?',
+    '2. Fitur wajib yang tidak boleh absen apa saja (mis. invoice, checkout, dashboard)?',
+    '3. Preset stack & anchor harga — `landing`, `saas-fullstack`, atau `custom-app`, dan harga (mis. $29/mo)?',
+  ];
+  if (recalled.length > 0) {
+    lines.push('', `Catatan dari memori: ${recalled[0]}`);
+  }
+  return lines.join('\n');
+}
+
+/** Brief terstruktur deterministik (JSON) dari transkrip thread — tombol GO. */
+function briefDraft(request: LLMRequest): string {
+  const transcript = request.prompt.trim() || (request.context.thread ?? '');
+  return JSON.stringify(heuristicBriefDraft(transcript), null, 2);
 }

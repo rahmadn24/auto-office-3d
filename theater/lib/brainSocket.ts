@@ -5,13 +5,18 @@ import { io, type Socket } from 'socket.io-client';
 import {
   parseAgentStatus,
   parseArtifacts,
+  parseBrief,
+  parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
   type AgentStatusPayload,
+  type BriefPayload,
+  type ChatTurnPayload,
 } from '@/lib/events';
+import { useBriefing } from '@/store/briefingStore';
 import { useBrain } from '@/store/brainStore';
 import { AGENT_ROSTER, useOffice, type AnimState, type AgentId } from '@/store/officeStore';
 import { ZONE_BY_KEY, type ZoneKey } from '@/lib/zones';
@@ -258,6 +263,16 @@ export function connectBrain(): Socket {
     });
   });
 
+  // Fase 8 — Briefing Room: balasan PM untuk founder:chat (broadcast dari brain).
+  socket.on('pm:reply', (raw: unknown) => {
+    const parsed = parseChatTurn(raw);
+    if (!parsed.ok) {
+      console.warn('[theater] pm:reply DITOLAK:', parsed.issues);
+      return;
+    }
+    useBriefing.getState().applyReply(parsed.payload);
+  });
+
   return socket;
 }
 
@@ -294,6 +309,84 @@ export async function sendFounderDirective(
 /** LOOP CONTROLS — HALT/RESUME seluruh graph (PRD §3.2). */
 export function setGraphHalt(halted: boolean, runId?: string): void {
   socket?.emit(halted ? 'control:halt' : 'control:resume', { runId });
+}
+
+/* ───────── Fase 8 — Briefing Room (PRD §3.1, §5.3) ───────── */
+
+/**
+ * Kirim satu pesan founder ke PM (`founder:chat`). Balasan menyusul lewat
+ * event `pm:reply` → store briefing. Ack = konsisten dengan founder:directive.
+ */
+export async function sendFounderChat(
+  conversationId: string,
+  message: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const text = message.trim();
+  if (!text) return { ok: false, error: 'empty message' };
+  if (!socket || !socket.connected) {
+    return { ok: false, error: 'brain offline — sambungkan socket dulu' };
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (5s)' }), 5000);
+    socket?.emit('founder:chat', { conversationId, message: text }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; error?: unknown } | null;
+      if (a && a.ok === true) resolve({ ok: true });
+      else resolve({ ok: false, error: typeof a?.error === 'string' ? a.error : 'nack' });
+    });
+  });
+}
+
+/** Riwayat thread briefing durable dari brain (reload/restart tetap ada). */
+export function fetchBriefingHistory(conversationId: string): Promise<ChatTurnPayload[]> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve([]);
+      return;
+    }
+    const timer = setTimeout(() => resolve([]), 5000);
+    socket?.emit('briefing:history', { conversationId }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; turns?: unknown[] } | null;
+      if (!a || a.ok !== true || !Array.isArray(a.turns)) {
+        resolve([]);
+        return;
+      }
+      resolve(
+        a.turns
+          .map((t) => parseChatTurn(t))
+          .filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
+          .map((r) => r.payload),
+      );
+    });
+  });
+}
+
+/** GO — compile thread jadi brief terstruktur (audience, fitur, preset, harga). */
+export function compileBrief(
+  conversationId: string,
+): Promise<{ ok: true; brief: BriefPayload } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'brain offline — sambungkan socket dulu' });
+      return;
+    }
+    const timer = setTimeout(() => resolve({ ok: false, error: 'ack timeout (15s)' }), 15_000);
+    socket?.emit('brief:compile', { conversationId }, (ack: unknown) => {
+      clearTimeout(timer);
+      const a = ack as { ok?: unknown; error?: unknown; brief?: unknown } | null;
+      if (!a || a.ok !== true) {
+        resolve({ ok: false, error: typeof a?.error === 'string' ? a.error : 'nack' });
+        return;
+      }
+      const parsed = parseBrief(a.brief);
+      if (!parsed.ok) {
+        resolve({ ok: false, error: `brief tidak valid: ${parsed.issues}` });
+        return;
+      }
+      resolve({ ok: true, brief: parsed.payload });
+    });
+  });
 }
 
 export function getBrainSocket(): Socket | null {

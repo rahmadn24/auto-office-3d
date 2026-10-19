@@ -4,13 +4,21 @@ import { EventBus } from '../src/events';
 import {
   parseAgentStatus,
   parseArtifacts,
+  parseBrief,
+  parseChatTurn,
   parseDeployUpdate,
   parseFirstSale,
   parseMemoryRetrieval,
   parseRevenueUpdate,
   parseSocialPost,
 } from '../src/server/contract';
-import type { AgentStatusPayload, ArtifactsPayload, FirstSalePayload } from '../src/types';
+import type {
+  AgentStatusPayload,
+  ArtifactsPayload,
+  BriefPayload,
+  ChatTurnPayload,
+  FirstSalePayload,
+} from '../src/types';
 
 const validStatus: AgentStatusPayload = {
   runId: 'run_x',
@@ -270,5 +278,63 @@ describe('kontrak artifacts:ready (Fase 5 viewer)', () => {
     bus.onArtifacts((p) => seen.push(p.runId));
     bus.artifacts(validArtifacts);
     expect(seen).toEqual(['run_x']);
+  });
+});
+
+/* ───────── Fase 8 — kontrak founder:chat / pm:reply & brief:compile (PRD §5.3) ───────── */
+
+const validChatTurn: ChatTurnPayload = {
+  conversationId: 'conv_1',
+  channel: 'briefing',
+  role: 'agent',
+  agentId: 'pm_agent',
+  message: 'Noted — sebelum lanjut, siapa audience utamanya?',
+  citations: ['pm-memory[seed:persona]: technical founders'],
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+const validBrief: BriefPayload = {
+  conversationId: 'conv_1',
+  projectName: 'Invoice Engine',
+  audience: 'freelancers & small agencies',
+  features: ['invoice generator', 'stripe checkout'],
+  preset: 'saas-fullstack',
+  pricing: '$19/mo',
+  summary: 'Brief dari diskusi Founder↔PM',
+  directive: 'Bangun Invoice Engine end-to-end.',
+  timestamp: '2026-01-01T00:00:00.000Z',
+};
+
+describe('kontrak founder:chat / pm:reply — ChatTurnPayload (PRD §5.3)', () => {
+  it('payload valid diterima', () => {
+    expect(parseChatTurn(validChatTurn).ok).toBe(true);
+  });
+  it('channel di luar daftar ditolak', () => {
+    expect(parseChatTurn({ ...validChatTurn, channel: 'telegram' }).ok).toBe(false);
+  });
+  it('agentId di luar pm_agent/cs_agent ditolak', () => {
+    expect(parseChatTurn({ ...validChatTurn, agentId: 'dev_agent' }).ok).toBe(false);
+  });
+  it('message kosong ditolak', () => {
+    expect(parseChatTurn({ ...validChatTurn, message: '' }).ok).toBe(false);
+  });
+  it('citations opsional', () => {
+    const { citations: _citations, ...rest } = validChatTurn;
+    expect(parseChatTurn(rest).ok).toBe(true);
+  });
+});
+
+describe('kontrak brief:compile — BriefPayload (Fase 8 GO)', () => {
+  it('payload valid diterima', () => {
+    expect(parseBrief(validBrief).ok).toBe(true);
+  });
+  it('preset di luar enum ditolak', () => {
+    expect(parseBrief({ ...validBrief, preset: 'monolith' }).ok).toBe(false);
+  });
+  it('features kosong ditolak (brief harus punya isi)', () => {
+    expect(parseBrief({ ...validBrief, features: [] }).ok).toBe(false);
+  });
+  it('directive kosong ditolak', () => {
+    expect(parseBrief({ ...validBrief, directive: '' }).ok).toBe(false);
   });
 });
