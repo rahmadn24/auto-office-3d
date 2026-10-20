@@ -123,6 +123,9 @@ async function main() {
     spawnService('theater', theaterDir, ['run', 'dev'], {
       PORT: String(THEATER_PORT),
       NEXT_PUBLIC_BRAIN_URL: `http://127.0.0.1:${BRAIN_PORT}`,
+      // Jangan pakai `.next` bersama dev server utama — bundle env E2E akan
+      // tertukar dan UI dev menembak brain E2E yang sudah dimatikan.
+      NEXT_DIST_DIR: '.next-e2e',
     });
     await waitForHttp(`http://127.0.0.1:${THEATER_PORT}`, 'theater /', 90_000);
     console.log('✓ theater siap');
@@ -211,7 +214,7 @@ async function main() {
         throw err;
       }
       await page.waitForFunction(
-        () => document.body.innerText.toLowerCase().includes('run otonom berjalan'),
+        () => document.body.innerText.toLowerCase().includes('directive terkirim'),
         undefined,
         { timeout: 20_000 },
       );

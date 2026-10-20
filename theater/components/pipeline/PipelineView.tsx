@@ -61,6 +61,8 @@ function PipelineHeader(): ReactNode {
   const activeNode = active
     ? (NODE_OF_ACTION[active.currentAction] ?? active.currentAction)
     : (runStage ?? 'Idle');
+  // Run sudah final: label "Active Node" akan menyesatkan ("ACTIVE NODE DONE").
+  const finished = ['DONE', 'FAILED', 'HALTED', 'INTERRUPTED'].includes(runStage ?? '');
   // Siklus aktif loop Dev⇄QA dari payload iterationCycle.
   const cycleAgent = agents.qa_agent ?? agents.dev_agent;
   const cur = cycleAgent?.iterationCycle?.current ?? 0;
@@ -72,7 +74,7 @@ function PipelineHeader(): ReactNode {
       className={`flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg px-3 py-2 font-mono text-mono-label uppercase tracking-wide ${GLASS}`}
     >
       <span className="flex items-center gap-1.5">
-        <span className="text-[#94a3b8]">Active Node</span>
+        <span className="text-[#94a3b8]">{finished ? 'Run Status' : 'Active Node'}</span>
         <span className="text-[#38bdf8]">{activeNode}</span>
       </span>
       <span className="flex items-center gap-1.5">
@@ -118,7 +120,7 @@ function GraphFlow(): ReactNode {
     { id: 'pm', label: 'PM Agent', on: action === 'discussing', sub: 'PRD' },
     {
       id: 'loop',
-      label: 'Team 2 · Active Loop',
+      label: 'Dev ⇄ QA Loop',
       on: action === 'coding' || action === 'testing',
       sub: `Dev ⇄ QA · Cycle ${cur}/${max}`,
     },

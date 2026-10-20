@@ -105,7 +105,9 @@ export function AgentStream(): ReactNode {
   // Drawer per breakpoint: terbuka di desktop, tertutup di tablet/mobile
   // (overlay) — efek jalan setelah hidrasi supaya SSR tetap konsisten.
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1280px)');
+    // Rail feed default terbuka hanya di layar lebar. Pada 1280–1799 px
+    // kanvas 3D butuh ruang; feed tetap bisa dibuka manual lewat pill.
+    const mq = window.matchMedia('(min-width: 1800px)');
     const apply = () => setOpen(mq.matches);
     apply();
     mq.addEventListener('change', apply);
@@ -128,7 +130,7 @@ export function AgentStream(): ReactNode {
 
   return (
     <aside
-      className={`pointer-events-auto absolute bottom-20 left-4 right-4 z-40 flex max-h-[55vh] flex-col rounded-xl md:bottom-6 md:left-auto md:right-6 md:top-6 md:max-h-none md:w-[340px] xl:bottom-8 xl:right-8 xl:top-8 xl:w-[380px] ${GLASS_STRONG}`}
+      className={`pointer-events-auto absolute bottom-20 left-4 right-4 z-40 flex max-h-[55vh] flex-col rounded-xl md:bottom-6 md:left-auto md:right-6 md:top-6 md:max-h-none md:w-[340px] xl:bottom-8 xl:right-8 xl:top-8 xl:w-[340px] 2xl:w-[380px] ${GLASS_STRONG}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-grid-major/60 px-3 py-2">

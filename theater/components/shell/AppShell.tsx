@@ -95,7 +95,7 @@ function TabLink({
       aria-current={active ? 'page' : undefined}
     >
       <span
-        className="font-mono text-mono-label uppercase tracking-wide"
+        className="whitespace-nowrap font-mono text-mono-label uppercase tracking-wide"
         style={{ color: active ? '#38bdf8' : '#94a3b8' }}
       >
         {label} <span className="text-tertiary">{sub}</span>
@@ -185,8 +185,9 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
         <span className="font-mono text-mono-label uppercase tracking-wide text-[#38bdf8] md:hidden">
           {TABS.find((t) => t.key === active)?.label}
         </span>
-        {/* HUD dev + demo celebrate di nav — tidak menutupi kanvas/chat/stream. */}
-        <div className="ml-auto hidden items-center gap-2 xl:flex">
+        {/* HUD dev + demo celebrate hanya di layar lebar; di 1280–1535 px
+            nav butuh ruang penuh agar label tab tidak wrap. */}
+        <div className="ml-auto hidden items-center gap-2 2xl:flex">
           <PerfOverlay />
           <CelebrateButton />
         </div>

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { AGENT_IDS } from '../lib/events';
 import type {
   AgentStatusPayload,
   DeployUpdatePayload,
@@ -102,6 +103,37 @@ describe('brainStore: applyStatus (diff update)', () => {
       expect.arrayContaining(['dev_agent', 'qa_agent']),
     );
   });
+
+  it('run baru mereset token header (bukan maksimum sepanjang sesi)', () => {
+    useBrain.getState().applyStatus(
+      status({
+        runId: 'run_lama',
+        telemetry: { tokensUsed: 12000, latencyMs: 200, model: 'stub' },
+      }),
+    );
+    useBrain.getState().applyStatus(
+      status({
+        runId: 'run_baru',
+        timestamp: '12:00:05.000',
+        telemetry: { tokensUsed: 300, latencyMs: 120, model: 'stub' },
+      }),
+    );
+    expect(useBrain.getState().tokens).toBe(300);
+  });
+
+  it('semua agen idle → stage DONE, bukan aksi terakhir run', () => {
+    for (const agentId of AGENT_IDS) {
+      useBrain.getState().applyStatus(
+        status({
+          agentId,
+          currentAction: 'idle',
+          timestamp: '12:00:00.000',
+          telemetry: { tokensUsed: 9000, latencyMs: 100, model: 'stub' },
+        }),
+      );
+    }
+    expect(useBrain.getState().runStage).toBe('DONE');
+  });
 });
 
 describe('brainStore: applyMilestone (idempoten)', () => {
@@ -149,6 +181,37 @@ describe('brainStore: snapshot hydrate', () => {
     useBrain.getState().applyStatus(status({ timestamp: '12:05:00.000' }));
     useBrain.getState().hydrateSnapshot({ agents: [status({ timestamp: '12:00:00.000' })] });
     expect(useBrain.getState().agents.dev_agent?.timestamp).toBe('12:05:00.000');
+  });
+
+  it('fresh load mengisi feed status, event count, runId, dan stage DONE', () => {
+    const agents = AGENT_IDS.map((agentId, i) =>
+      status({
+        agentId,
+        currentAction: 'idle',
+        timestamp: `12:00:0${i}.000`,
+        telemetry: { tokensUsed: 9000, latencyMs: 100, model: 'stub' },
+      }),
+    );
+    useBrain.getState().hydrateSnapshot({
+      agents,
+      milestones: [sale()],
+      latestRun: { runId: 'run_1', status: 'completed', stage: 'done' },
+    });
+    const s = useBrain.getState();
+    expect(s.runId).toBe('run_1');
+    expect(s.runStage).toBe('DONE');
+    expect(s.tokens).toBe(9000);
+    expect(s.feed.length).toBe(agents.length + 1);
+    expect(s.eventCount).toBe(agents.length + 1);
+  });
+
+  it('stage final dari run store menang atas status agen yang basi', () => {
+    useBrain.getState().applyStatus(status({ runId: 'run_gagal' }));
+    useBrain.getState().hydrateSnapshot({
+      agents: [status({ runId: 'run_gagal', currentAction: 'marketing' })],
+      latestRun: { runId: 'run_gagal', status: 'failed', stage: 'failed' },
+    });
+    expect(useBrain.getState().runStage).toBe('FAILED');
   });
 });
 

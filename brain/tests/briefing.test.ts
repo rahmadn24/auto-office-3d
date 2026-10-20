@@ -101,8 +101,10 @@ describe('BriefingService — chat flow & durability (Fase 8)', () => {
     expect(brief.features.every((f) => f.length > 0)).toBe(true);
     expect(brief.directive).toContain('[Brief Ringkas');
     expect(brief.directive).toContain('Preset stack');
+    expect(brief.directive.startsWith('bangun SaaS invoice untuk agensi')).toBe(true);
     expect(brief.pricing).toContain('$19');
-    expect(brief.projectName.length).toBeGreaterThan(0);
+    expect(brief.projectName).toBe('SaaS Invoice Agensi');
+    expect(brief.projectName).not.toMatch(/brief|diskusi|founder/i);
 
     const pmHits = await memory.search('pm-memory', 'brief proyek invoice agensi', 5);
     expect(pmHits.some((h) => h.id === 'brief:go')).toBe(true);

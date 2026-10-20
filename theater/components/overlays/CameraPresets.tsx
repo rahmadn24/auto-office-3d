@@ -22,7 +22,7 @@ export function CameraPresets(): ReactNode {
   return (
     <div
       className="fixed left-1/2 z-40 hidden -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-surface-container-lowest/85 px-2 py-1 font-mono text-label-xs uppercase tracking-widest text-on-surface-variant backdrop-blur md:flex"
-      // Di atas area Founder Command Bar + footer (ukur dinamis di AppShell).
+      // Di atas area footer (ukur dinamis di AppShell).
       style={{ bottom: 'calc(1.25rem + var(--shell-bottom-space, 0px))' }}
       role="group"
       aria-label="Preset kamera"

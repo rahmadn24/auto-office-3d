@@ -135,11 +135,22 @@ export function connectBrain(): Socket {
     timeout: 8000,
   });
 
+  function probePing(): void {
+    if (socket && socket.connected) {
+      const t0 = Date.now();
+      socket.emit('sys:ping', () => {
+        useBrain.getState().setPing(Date.now() - t0);
+      });
+    }
+  }
+
   socket.on('connect', () => {
     useBrain.getState().setConnection('connected');
     // Tarik snapshot terbaru tiap (re)connect — fresh load / deep-link per tab
     // langsung terisi state terakhir (run sudah selesai sebelum tab dibuka).
     if (socket) requestSnapshot(socket);
+    // Probe pertama langsung: badge PING tidak kosong 5 detik pertama.
+    probePing();
   });
 
   socket.on('disconnect', () => {
@@ -153,14 +164,7 @@ export function connectBrain(): Socket {
   // Ping round-trip → badge PING xxms (PRD §2.1). Manager Socket.io tak
   // mengekspos latensi (emitReserved tanpa arg), jadi kita ukur sendiri lewat
   // echo `sys:ping` ke brain — tiap 5s selama tersambung.
-  pingTimer = setInterval(() => {
-    if (socket && socket.connected) {
-      const t0 = Date.now();
-      socket.emit('sys:ping', () => {
-        useBrain.getState().setPing(Date.now() - t0);
-      });
-    }
-  }, 5000);
+  pingTimer = setInterval(probePing, 5000);
 
   socket.on('system:hello', (hello: unknown) => {
     const h = hello as {
@@ -234,6 +238,9 @@ export function connectBrain(): Socket {
         ? { haltedAll: Boolean(s.control.haltedAll), runIds: s.control.runIds ?? [] }
         : undefined,
       artifacts: artifacts && artifacts.ok ? artifacts.payload : null,
+      latestRun: runs[0]
+        ? { runId: runs[0].runId, status: runs[0].status, stage: runs[0].stage }
+        : null,
     });
     for (const a of agents) bridgeTo3D(a.agentId, a);
   });

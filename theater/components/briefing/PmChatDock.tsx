@@ -17,7 +17,7 @@ import { useOffice } from '@/store/officeStore';
 /**
  * FLOATING PM CHAT (Fase 8 → dipindah Fase 13-polish): diskusi dulu, otonom
  * kemudian — kini bukan tab terpisah, tapi dock mengambang di bawah Agent
- * Division Sidebar (kiri-bawah, di atas Founder Command Bar).
+ * Division Sidebar (kiri-bawah, di atas footer).
  *
  * - Thread chat multi-turn Founder↔PM (bubble + avatar PM + typing indicator).
  * - Pesan founder → `founder:chat`; balasan PM datang lewat `pm:reply`.
@@ -150,10 +150,11 @@ export function PmChatDock(): ReactNode {
     };
   }, [connection, conversationId]);
 
-  // Auto-scroll ke turn terbaru (hanya saat panel terbuka).
+  // Auto-scroll ke turn terbaru (hanya saat panel terbuka & sudah ada isi).
+  // Thread kosong jangan di-scroll: intro/saran PM di atas ikut terpotong.
   useEffect(() => {
     const el = threadRef.current;
-    if (open && el) el.scrollTop = el.scrollHeight;
+    if (open && el && (turns.length > 0 || typing)) el.scrollTop = el.scrollHeight;
   }, [turns.length, typing, open]);
 
   // Escape menciutkan panel (fokus balik ke tombol pemicu di handle).

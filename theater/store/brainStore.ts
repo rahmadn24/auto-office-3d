@@ -211,6 +211,8 @@ interface BrainStore {
     memory?: Record<string, number>;
     control?: { haltedAll: boolean; runIds: string[] };
     artifacts?: ArtifactsPayload | null;
+    /** Run terakhir dari run store — sumber stage final setelah run selesai. */
+    latestRun?: { runId: string; status: string; stage: string } | null;
   }): void;
 }
 
@@ -227,13 +229,20 @@ const STAGE_ORDER = [
 
 function deriveRunStage(agents: Partial<Record<AgentId, AgentStatusPayload>>): string | null {
   let best = -1;
+  let count = 0;
+  let allIdle = true;
   const order = STAGE_ORDER as readonly string[];
   for (const a of Object.values(agents)) {
     if (!a) continue;
+    count += 1;
+    if (a.currentAction !== 'idle') allIdle = false;
     // 'walking' tidak ada di STAGE_ORDER → indexOf -1 (diabaikan).
     const idx = order.indexOf(a.currentAction);
     if (idx > best) best = idx;
   }
+  // Semua agen sudah dipulangkan oleh event penutup run → stage selesai.
+  // Tanpa ini dashboard menyimpan aksi terakhir (mis. MARKETING) selamanya.
+  if (count > 1 && allIdle) return 'DONE';
   const stage = best >= 0 ? order[best] : undefined;
   return stage ? stage.toUpperCase() : null;
 }
@@ -297,6 +306,12 @@ export const useBrain = create<BrainStore>((set, get) => ({
     const feed = [item, ...s.feed].slice(0, MAX_FEED);
     const agents = { ...s.agents, [payload.agentId]: payload };
     const best = s.bestLatencyMs === null ? latency : Math.min(s.bestLatencyMs, latency);
+    // Token header = progres run aktif, bukan maksimum sepanjang sesi browser.
+    // Run baru otomatis mereset angka; run yang sama memakai nilai tertinggi.
+    const tokens =
+      s.runId && s.runId !== payload.runId
+        ? (payload.telemetry?.tokensUsed ?? 0)
+        : Math.max(s.tokens, payload.telemetry?.tokensUsed ?? 0);
 
     set({
       agents,
@@ -304,7 +319,7 @@ export const useBrain = create<BrainStore>((set, get) => ({
       feed,
       runStage: deriveRunStage(agents),
       runId: payload.runId,
-      tokens: Math.max(s.tokens, payload.telemetry?.tokensUsed ?? 0),
+      tokens,
       latencyMs: latency,
       bestLatencyMs: best,
       lastEventAt: now,
@@ -455,16 +470,43 @@ export const useBrain = create<BrainStore>((set, get) => ({
     memory,
     control,
     artifacts,
+    latestRun,
   }) => {
     const s = get();
     const map: Partial<Record<AgentId, AgentStatusPayload>> = { ...s.agents };
     const statusMs = { ...s.agentStatusMs };
+    const snapshotFeed: FeedItem[] = [];
+    let snapshotRunId: string | null = null;
+    let newestSnapshotAt = -Infinity;
     for (const a of agents ?? []) {
       const prevMs = statusMs[a.agentId] ?? null;
       const at = parseBrainTimestampWithRollover(a.timestamp, prevMs);
       if (prevMs === null || at > prevMs) {
         map[a.agentId] = a;
         statusMs[a.agentId] = at;
+        if (at > newestSnapshotAt) {
+          newestSnapshotAt = at;
+          snapshotRunId = a.runId;
+        }
+        // Fresh load / reconnect tanpa feed: tampilkan status terakhir sebagai
+        // konteks, bukan hanya milestone terakhir. Saat reconnect dengan feed
+        // yang sudah hidup, jangan duplikasi event ke stream.
+        if (s.feed.length === 0) {
+          snapshotFeed.push({
+            id: nextFeedId(),
+            agentId: a.agentId,
+            division: a.division,
+            action: a.currentAction,
+            targetZone: a.targetZone,
+            detail: a.logMessage,
+            at,
+            tsLabel: a.timestamp,
+            tokens: a.telemetry?.tokensUsed,
+            latencyMs: a.telemetry?.latencyMs,
+            runId: a.runId,
+            kind: 'status',
+          });
+        }
       }
     }
     let hasCustomers = s.hasCustomers;
@@ -489,19 +531,41 @@ export const useBrain = create<BrainStore>((set, get) => ({
         kind: 'milestone',
       });
     }
-    // Telemetry token terakhir antar agen → pulihkan stat header di fresh load.
-    const tokens = (agents ?? []).reduce(
+    // Snapshot terbaru = milestone di atas, lalu status agen (terbaru dulu).
+    snapshotFeed.sort((a, b) => b.at - a.at);
+    feed.push(...snapshotFeed);
+    // Telemetry token untuk run yang di-snapshot — reset bila run berganti.
+    const snapshotTokens = (agents ?? []).reduce(
       (m, a) => Math.max(m, a.telemetry?.tokensUsed ?? 0),
-      s.tokens,
+      0,
     );
+    const tokens =
+      snapshotRunId && s.runId && snapshotRunId !== s.runId
+        ? snapshotTokens
+        : Math.max(s.tokens, snapshotTokens);
+    // Run store adalah sumber kebenaran untuk stage final. Status agen terakhir
+    // bisa saja masih aksi lama saat run sudah COMPLETED (mis. setelah restart).
+    const latestRunApplies =
+      latestRun !== null &&
+      latestRun !== undefined &&
+      (s.runId === null || s.runId === latestRun.runId) &&
+      (snapshotRunId === null || snapshotRunId === latestRun.runId);
+    const runStage =
+      latestRunApplies && latestRun.status !== 'running'
+        ? latestRun.status === 'completed'
+          ? 'DONE'
+          : latestRun.status.toUpperCase()
+        : deriveRunStage(map);
     set({
       agents: map,
       agentStatusMs: statusMs,
       hasCustomers,
       milestone,
       seenSaleIds: seen,
-      runStage: deriveRunStage(map),
+      runStage,
+      runId: s.runId ?? snapshotRunId ?? latestRun?.runId ?? null,
       feed: feed.slice(0, MAX_FEED),
+      eventCount: Math.max(s.eventCount, feed.length),
       tokens,
       deploy: deploy ?? s.deploy,
       revenue: revenue ?? s.revenue,

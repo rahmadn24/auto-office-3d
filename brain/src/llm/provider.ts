@@ -48,6 +48,9 @@ export function prdSystemPrompt(): string {
     '## 03 / Data Contract & Schema Integrity (TypeScript interface)',
     '## 04 / Vector DB Context Citations (RAG)',
     'No commentary outside the document.',
+    'Use the same language as the founder directive (formal Indonesian if Indonesian).',
+    'Use standard spelling and grammar; never invent abbreviations or misspell section labels.',
+    'Finish every section completely — never stop mid-sentence or truncate acceptance criteria.',
   ].join('\n');
 }
 

@@ -46,42 +46,47 @@ export function DivisionSidebar({ anchored = true }: { anchored?: boolean }): Re
       <aside
         className={`${asidePos} hidden h-full min-h-0 w-[280px] flex-col overflow-hidden rounded-xl xl:flex ${GLASS}`}
       >
-        <header className="flex shrink-0 items-center justify-between border-b border-white/8 px-3 py-2">
-          <h2 className="font-mono text-mono-label uppercase tracking-wide text-[#94a3b8]">
+        <header className="flex shrink-0 items-center justify-between border-b border-white/8 px-2.5 py-1.5">
+          <h2 className="font-mono text-[9.5px] uppercase tracking-wide text-[#94a3b8]">
             Agent Division Sidebar
           </h2>
-          <span className="font-mono text-[9px] uppercase tracking-wide text-[#475569]">280px</span>
+          <span className="font-mono text-[9px] uppercase tracking-wide text-[#475569]">
+            5 divisi
+          </span>
         </header>
-        <ul className="flex min-h-0 flex-col gap-1.5 overflow-y-auto p-3">
+        <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto p-2">
           {DIVISIONS.map(({ id, label, role, color, icon }) => {
             const a = agents[id];
             const action = a?.currentAction ?? 'idle';
             const stColor = STATUS_COLOR[action] ?? '#475569';
             return (
-              <li key={id} className="rounded-lg border border-white/6 bg-black/20 p-2">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <span className="text-[12px]" style={{ color }}>
+              <li key={id} className="rounded-lg border border-white/6 bg-black/20 px-2 py-0.5">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-[11px]" style={{ color }}>
                       {icon}
                     </span>
-                    <span className="font-mono text-label-xs uppercase tracking-wide text-[#f8fafc]">
+                    <span className="font-mono text-[9.5px] uppercase tracking-wide text-[#f8fafc]">
                       {label}
                     </span>
-                    <span className="font-mono text-[9px] uppercase tracking-wide text-[#475569]">
+                    <span className="truncate font-mono text-[8.5px] uppercase tracking-wide text-[#475569]">
                       {role}
                     </span>
                   </span>
                   <StatusChip label={action} color={stColor} pulse={action !== 'idle'} />
                 </div>
-                <p className="mt-1 line-clamp-2 font-mono text-[10px] leading-snug text-[#94a3b8]">
+                <p
+                  className="mt-0.5 truncate font-mono text-[9.5px] leading-snug text-[#94a3b8]"
+                  title={a?.logMessage ?? '—'}
+                >
                   {a?.logMessage ?? '—'}
                 </p>
               </li>
             );
           })}
         </ul>
-        <footer className="border-t border-white/6 px-3 py-1.5 font-mono text-[9px] uppercase tracking-wide text-[#475569]">
-          gutter 1.5rem · margin 2rem
+        <footer className="shrink-0 border-t border-white/6 px-2.5 py-1 font-mono text-[8.5px] uppercase tracking-wide text-[#475569]">
+          5 divisi · 6 agen · live telemetry
         </footer>
       </aside>
 

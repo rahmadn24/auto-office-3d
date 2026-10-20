@@ -1,7 +1,8 @@
 'use client';
 
-import { Canvas } from '@react-three/fiber';
-import type { ReactNode } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { useEffect, type ReactNode } from 'react';
+import type { PerspectiveCamera } from 'three';
 
 import { CAMERA_PRESET, CANVAS_THEME } from '@/lib/zones';
 import { useOffice } from '@/store/officeStore';
@@ -16,6 +17,38 @@ import { CameraRig } from './CameraRig';
 import { Confetti } from './Confetti';
 import { DemoDirector } from './DemoDirector';
 import { PerfProbe } from './PerfProbe';
+
+/**
+ * Komposisi 3D di 1280–1799 px: panel divisi 280 px menutupi zona Founder.
+ * Geser frustum 180 px ke kanan (diturunkan bertahap menjelang 1800 px) agar
+ * seluruh zona tetap terbaca tanpa mengubah canvas full-bleed. Di ≥1800 px
+ * feed kanan terbuka; offset dimatikan supaya scene tidak bertabrakan.
+ */
+function SceneViewOffset(): null {
+  const { camera, size } = useThree();
+
+  useEffect(() => {
+    const cam = camera as PerspectiveCamera;
+    if (typeof cam.setViewOffset !== 'function') return undefined;
+    const shift =
+      size.width < 1280
+        ? 0
+        : size.width < 1600
+          ? 180
+          : size.width < 1800
+            ? Math.round((180 * (1800 - size.width)) / 200)
+            : 0;
+    if (shift === 0) cam.clearViewOffset();
+    else cam.setViewOffset(size.width, size.height, -shift, 0, size.width, size.height);
+    cam.updateProjectionMatrix();
+    return (): void => {
+      cam.clearViewOffset();
+      cam.updateProjectionMatrix();
+    };
+  }, [camera, size.width, size.height]);
+
+  return null;
+}
 
 /**
  * Viewport 3D isometrik — PRD §4.1 & §4.3:
@@ -81,6 +114,7 @@ export default function OfficeScene(): ReactNode {
       <DemoDirector />
       <PerfProbe />
 
+      <SceneViewOffset />
       <CameraRig />
     </Canvas>
   );
