@@ -136,9 +136,18 @@ export class OpenAICompatLLM implements LLMProvider {
     // provider OpenAI-compatible belum mendukung field ini; fallback ke request
     // biasa bila gateway menolaknya (400/422), jangan gagalkan run.
     const wantsJson = request.task === 'code' || request.task === 'brief';
+    // Suhu rendah untuk artefak terstruktur (PRD/brief/code) supaya ejaan &
+    // format konsisten; percakapan butuh sedikit lebih luwes.
+    const temperature =
+      request.task === 'code'
+        ? 0.1
+        : request.task === 'prd' || request.task === 'brief'
+          ? 0.3
+          : 0.6;
     const payload: Record<string, unknown> = {
       model,
       max_tokens: request.maxOutputTokens ?? 4096,
+      temperature,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },

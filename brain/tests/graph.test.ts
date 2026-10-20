@@ -98,6 +98,7 @@ describe('LangGraph orchestrator (PRD §3)', () => {
     // Fallback tidak membatalkan run: safe-build tetap dideploy sampai stage 'done'
     expect(state.stage).toBe('done');
     expect(state.lastQaSummary).toContain('Safe-build verified');
+    expect(state.qaPassed).toBe(true);
     // Run tetap menghasilkan artefak yang bisa dideploy meski loop QA gagal
     expect(state.liveUrl).toMatch(/\.vercel\.app$/);
     expect(state.hasCustomers).toBe(true);

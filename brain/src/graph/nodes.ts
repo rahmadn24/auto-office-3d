@@ -179,6 +179,9 @@ export function pmNode(deps: GraphDeps) {
       task: 'prd',
       prompt: state.founderPrompt,
       context: { projectName: state.projectName, retrieved },
+      // PRD penuh (4 section + acceptance criteria) sering kehabisan 4.096 token
+      // pada model reasoner/murah → beri ruang lebih, biarkan selesai utuh.
+      maxOutputTokens: 6144,
     });
     deps.budget.add(result.usage, 'Product');
 
@@ -417,6 +420,9 @@ export function safeBuildNode(deps: GraphDeps) {
       lastQaSummary: ok
         ? `Safe-build verified · ${result.tests.passed}/${result.tests.total} tests`
         : 'Safe-build verification failed',
+      // Fallback yang sudah diverifikasi adalah QA PASS — tanpa ini artifact
+      // menampilkan "QA FAILED" padahal suite safe-build 7/7 lolos.
+      qaPassed: ok,
       typeErrors: result.typeCheck.errors,
       logs: appendLog(
         state.logs,

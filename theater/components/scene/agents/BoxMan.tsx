@@ -35,7 +35,11 @@ function SpeechBubble({
     return () => clearInterval(timer);
   }, []);
 
-  if (now - runtime.logAt > 6000 || runtime.log.length === 0) return null;
+  // Agen idle tidak perlu bubble: status penutup run (6 agen sekaligus) akan
+  // memenuhi scene dengan balon "RUN COMPLETE" yang saling tumpang tindih.
+  if (runtime.state === 'IDLE' || now - runtime.logAt > 6000 || runtime.log.length === 0) {
+    return null;
+  }
 
   // Offset vertikal bergantian (0.65) agar bubble agen berdekatan tidak tumpang tindih
   const height = 2.35 + (offsetIndex % 3) * 0.65;

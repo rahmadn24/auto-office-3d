@@ -97,6 +97,7 @@ function emitArtifacts(
     files,
     qaSummary: state.lastQaSummary,
     qaPassed: state.qaPassed,
+    ...(state.fallbackTriggered ? { fallback: true } : {}),
     cycles: state.iteration,
     maxCycles: state.maxIterations,
     tokensUsed,
@@ -110,10 +111,41 @@ function emitArtifacts(
 }
 
 /**
- * Run gagal sebelum sempat menyiarkan status akhir → reset agen yang sudah
- * aktif ke idle + bawa pesan error ke dashboard. Tanpa ini Theater hanya
- * menampilkan status terakhir (biasanya PM) seolah run masih berjalan.
+ * Run selesai/gagal/halt → tutup status agen yang aktif pada run ini dengan
+ * `idle`. Tanpa ini Theater menyimpan aksi terakhir (mis. "marketing") dan
+ * menampilkan run yang sudah COMPLETED seolah masih berjalan.
+ *
+ * Hanya agen yang benar-benar muncul di run ini yang di-reset; run halt
+ * sebelum QA tidak boleh tiba-tiba memunculkan QA sebagai "failed".
  */
+function emitRunSettled(
+  events: EventBus,
+  runId: string,
+  message: string,
+  tokensUsed: number,
+  latencyMs: number,
+  model: string,
+  fallbackAgent: 'founder_agent' = 'founder_agent',
+): void {
+  const settledAgents = new Set(
+    events.history.filter((p) => p.runId === runId).map((p) => p.agentId),
+  );
+  if (settledAgents.size === 0) settledAgents.add(fallbackAgent);
+
+  for (const agentId of settledAgents) {
+    events.agent(
+      EventBus.payload({
+        runId,
+        agentId,
+        action: 'idle',
+        logMessage: message,
+        zone: AGENT_HOME_ZONE[agentId],
+        telemetry: { tokensUsed, latencyMs, model },
+      }),
+    );
+  }
+}
+
 function emitRunFailure(
   events: EventBus,
   runId: string,
@@ -123,21 +155,24 @@ function emitRunFailure(
   model: string,
 ): void {
   const message = err instanceof Error ? err.message : String(err);
-  const activeAgents = new Set(events.history.map((p) => p.agentId));
-  if (activeAgents.size === 0) activeAgents.add('founder_agent');
+  emitRunSettled(events, runId, `RUN FAILED · ${message}`, tokensUsed, latencyMs, model);
+}
 
-  for (const agentId of activeAgents) {
-    events.agent(
-      EventBus.payload({
-        runId,
-        agentId,
-        action: 'idle',
-        logMessage: `RUN FAILED · ${message}`,
-        zone: AGENT_HOME_ZONE[agentId],
-        telemetry: { tokensUsed, latencyMs, model },
-      }),
-    );
-  }
+function emitRunComplete(
+  events: EventBus,
+  runId: string,
+  stage: RunState['stage'],
+  tokensUsed: number,
+  latencyMs: number,
+  model: string,
+): void {
+  const message =
+    stage === 'halted'
+      ? 'RUN HALTED · menunggu resume (checkpoint tersimpan)'
+      : stage === 'failed'
+        ? 'RUN FAILED · agen kembali idle'
+        : `RUN COMPLETE · ${stage.toUpperCase()} · agen kembali idle`;
+  emitRunSettled(events, runId, message, tokensUsed, latencyMs, model);
 }
 
 export interface RunOptions {
@@ -283,6 +318,14 @@ export async function runAutonomous(
     liveUrl: state.liveUrl,
     repoUrl: state.repoUrl,
   });
+  emitRunComplete(
+    events,
+    runId,
+    state.stage,
+    budget.total,
+    Date.now() - runStartedAt,
+    deps.llm.model,
+  );
 
   return {
     state,
@@ -386,6 +429,14 @@ export async function resumeAutonomous(
     liveUrl: state.liveUrl,
     repoUrl: state.repoUrl,
   });
+  emitRunComplete(
+    events,
+    runId,
+    state.stage,
+    budget.total,
+    Date.now() - runStartedAt,
+    deps.llm.model,
+  );
 
   return {
     state,
@@ -400,18 +451,116 @@ export async function resumeAutonomous(
   };
 }
 
+/**
+ * Kata yang tidak layak jadi awal/isi nama proyek. Termasuk kata depan
+ * Bahasa Indonesia supaya prompt "… untuk UMKM" tidak berhenti di "untuk".
+ */
+const PROJECT_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'with',
+  'for',
+  'and',
+  'of',
+  'that',
+  'which',
+  'to',
+  'in',
+  'on',
+  'my',
+  'our',
+  'please',
+  'build',
+  'make',
+  'create',
+  'untuk',
+  'utk',
+  'dengan',
+  'dgn',
+  'dan',
+  'yang',
+  'yg',
+  'di',
+  'ke',
+  'dari',
+  'pada',
+  'buat',
+  'bagi',
+  'agar',
+  'supaya',
+  'biar',
+  'pakai',
+  'menggunakan',
+  'serta',
+  'atau',
+  'ini',
+  'itu',
+  'saya',
+  'kami',
+  'kita',
+  'mau',
+  'ingin',
+  'target',
+  'targetnya',
+  'fokus',
+]);
+
+/** Kata kerja perintah di awal prompt — bukan bagian nama produk. */
+const PROJECT_LEADING_VERBS = new Set([
+  'bangun',
+  'bangunkan',
+  'buat',
+  'buatkan',
+  'bikin',
+  'bikinin',
+  'kembangkan',
+  'rancang',
+  'design',
+  'build',
+  'make',
+  'create',
+  'please',
+  'tolong',
+  'mohon',
+]);
+
+function titleCaseProjectName(value: string): string {
+  return value.replace(/(^|\s|-)(\p{L})/gu, (_match, sep: string, ch: string) => {
+    return `${sep}${ch.toUpperCase()}`;
+  });
+}
+
 /** Nama proyek untuk PRD & URL deploy, diturunkan dari prompt Founder (dipakai juga oleh Briefing Room). */
 export function guessProjectName(prompt: string): string {
-  const words = prompt
+  // Brief hasil Briefing Room menambahkan blok konteks setelah prompt asli —
+  // nama produk harus diambil dari kalimat founder, bukan dari metadata brief.
+  // Versi lama juga bisa diawali ringkasan "Brief dari diskusi Founder↔PM:".
+  let source = prompt.split(/\[Brief Ringkas/i)[0] ?? prompt;
+  source = source
+    .replace(/^\s*Brief dari diskusi[^:]*:\s*/i, '')
+    .replace(/^\s*Brief Diskusi Founder\s*(?:↔|⇄|<->|&)\s*PM[\s:—-]*/i, '')
+    .trim();
+  const tokens = source
+    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
     .split(/\s+/)
-    .filter((w) => /^[a-zA-Z][a-zA-Z0-9'-]*$/.test(w))
-    .filter(
-      (w) =>
-        !/^(a|an|the|with|for|and|of|that|which|to|in|on|my|our|please|build|make|create)$/i.test(
-          w,
-        ),
-    )
-    .slice(0, 4);
-  const joined = words.join(' ');
-  return joined.trim() || 'AutoInvoice Engine';
+    .map((w) => w.trim())
+    .filter(Boolean);
+
+  const words: string[] = [];
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (words.length === 0 && PROJECT_LEADING_VERBS.has(lower)) continue;
+    if (PROJECT_STOP_WORDS.has(lower)) continue;
+    if (words.length === 0 && /^\d+$/.test(token)) continue;
+    // Tiga kata pertama cukup untuk nama produk. Kata keempat hanya diterima
+    // bila singkat/akronim (UMKM, B2B, AI, Pro) — bukan klausa fitur lanjutan
+    // seperti "checkout"/"Stripe"/"freelancers" yang membuat nama kepanjangan.
+    if (words.length >= 3 && !/^[A-Z0-9]{2,5}$/.test(token) && token.length > 4) break;
+    words.push(token);
+    if (words.length >= 4) break;
+  }
+
+  const joined = words.join(' ').trim();
+  return joined ? titleCaseProjectName(joined) : 'AutoInvoice Engine';
 }

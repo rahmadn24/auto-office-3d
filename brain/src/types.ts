@@ -163,6 +163,8 @@ export interface ArtifactsPayload {
   files: Array<{ path: string; content: string; diff: ArtifactFileDiff }>;
   qaSummary: string;
   qaPassed: boolean;
+  /** true bila QA gagal 5 siklus dan graph memakai safe-build fallback. */
+  fallback?: boolean;
   cycles: number;
   maxCycles: number;
   tokensUsed: number;

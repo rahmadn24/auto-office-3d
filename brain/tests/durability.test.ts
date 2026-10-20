@@ -9,6 +9,7 @@ import { createControl } from '../src/control';
 import { createCheckpointer, openOfficeDb, RunStore } from '../src/durability/store';
 import { EventBus } from '../src/events';
 import { resumeAutonomous, runAutonomous } from '../src/run';
+import type { ArtifactsPayload } from '../src/types';
 
 const dir = mkdtempSync(join(tmpdir(), 'ao3d-dur-'));
 const dbPath = join(dir, 'office.db');
@@ -77,6 +78,48 @@ describe('RunStore — run history & event log durable (PRD v3.0 §4.4)', () => 
 
     const events = store.listEvents('run_c');
     expect(events.some((e) => e.kind === 'agent' && e.agent === 'dev_agent')).toBe(true);
+    db.close();
+  });
+
+  it('artifacts penuh durable: restart tidak mengosongkan tab Artifacts', () => {
+    const db = openOfficeDb(dbPath);
+    const store = new RunStore(db);
+    store.startRun({ runId: 'run_art', directive: 'bangun invoice engine' });
+    const payload: ArtifactsPayload = {
+      runId: 'run_art',
+      projectName: 'Invoice Engine',
+      prd: '# Invoice Engine\n\n## 01 / Executive Summary',
+      files: [
+        {
+          path: 'src/engine.ts',
+          content: 'export const total = 0;',
+          diff: { status: 'created', added: 1, removed: 0 },
+        },
+      ],
+      qaSummary: 'tsc clean · 1/1 tests',
+      qaPassed: true,
+      cycles: 1,
+      maxCycles: 5,
+      tokensUsed: 1234,
+      liveUrl: 'invoice.vercel.app',
+      repoUrl: 'https://github.com/a/b',
+      durationMs: 20_000,
+      timestamp: new Date().toISOString(),
+    };
+    store.saveArtifacts(payload);
+
+    expect(store.latestArtifacts()).toEqual(payload);
+
+    // Data lama: safe-build sudah terverifikasi tetapi qaPassed masih false.
+    store.saveArtifacts({
+      ...payload,
+      runId: 'run_art_legacy',
+      qaPassed: false,
+      qaSummary: 'Safe-build verified · 7/7 tests',
+      timestamp: new Date(Date.now() + 1000).toISOString(),
+    });
+    expect(store.latestArtifacts()?.qaPassed).toBe(true);
+    expect(store.latestArtifacts()?.fallback).toBe(true);
     db.close();
   });
 });

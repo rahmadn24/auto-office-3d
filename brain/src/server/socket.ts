@@ -22,6 +22,7 @@ import { logger } from '../logger';
 import { createPayment, type PaymentProvider } from '../payments';
 import { COVERAGE_THRESHOLD } from '../sandbox/types';
 import { assertDailyBudget, readDailyBudget } from '../telemetry/dailyBudget';
+import { AGENT_HOME_ZONE, AGENT_IDS } from '../types';
 import type {
   AgentStatusPayload,
   ArtifactsPayload,
@@ -115,6 +116,55 @@ export async function startSocketServer(
   const memory = opts.memory;
   const store = opts.store;
   const briefing = opts.briefing;
+
+  /**
+   * Daemon restart mengosongkan `latestByAgent`. Tanpa backfill, dashboard baru
+   * tampil kosong (AGENTS 0 / TOKENS 0) walau run terakhir sudah selesai.
+   * Rekonstruksi status idle dari run store; stage final tetap diambil dari
+   * `runs` di snapshot sehingga COMPLETED/FAILED tidak salah tampil.
+   */
+  function restoreLatestAgents(): void {
+    if (latestByAgent.size > 0 || !store) return;
+    const latest = store.listRuns(1)[0];
+    if (!latest) return;
+    const message =
+      latest.status === 'completed'
+        ? 'RUN COMPLETE · semua agen idle'
+        : latest.status === 'failed'
+          ? 'RUN FAILED · cek riwayat di Pipeline'
+          : latest.status === 'halted'
+            ? 'RUN HALTED · checkpoint tersimpan'
+            : latest.status === 'interrupted'
+              ? 'RUN INTERRUPTED · resume di Pipeline'
+              : 'RUN RUNNING · status dipulihkan';
+    for (const agentId of AGENT_IDS) {
+      latestByAgent.set(
+        agentId,
+        EventBus.payload({
+          runId: latest.runId,
+          agentId,
+          action: 'idle',
+          zone: AGENT_HOME_ZONE[agentId],
+          logMessage: message,
+          telemetry: { tokensUsed: latest.tokensUsed, latencyMs: 0, model: 'restored' },
+        }),
+      );
+    }
+  }
+
+  restoreLatestAgents();
+
+  /** Tab Artifacts juga harus terisi setelah daemon restart (Fase 13-polish). */
+  function restoreLatestArtifacts(): void {
+    if (latestArtifacts || !store) return;
+    const stored = store.latestArtifacts();
+    if (!stored) return;
+    const parsed = parseArtifacts(stored);
+    if (parsed.ok) latestArtifacts = parsed.payload;
+    else logger.warn({ issues: parsed.issues }, 'artifact durable tidak valid — dilewati');
+  }
+
+  restoreLatestArtifacts();
 
   // CS Agent (Fase 11) — dibangun sebelum HTTP handler (webhook & kontrak ikut
   // memakainya); broadcast memakai ioRef karena io baru dibuat setelah handler.

@@ -7,6 +7,7 @@ import { PmChatDock } from '../components/briefing/PmChatDock';
 import { DivisionSidebar } from '../components/overlays/DivisionSidebar';
 import { AgentStream } from '../components/overlays/AgentStream';
 import { CameraPresets } from '../components/overlays/CameraPresets';
+import { SceneBoundary } from '../components/scene/SceneBoundary';
 import { AppShell } from '../components/shell/AppShell';
 
 const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
@@ -29,7 +30,9 @@ const OfficeScene = dynamic(() => import('../components/scene/OfficeScene'), {
 export default function HomePage(): ReactNode {
   return (
     <AppShell>
-      <OfficeScene />
+      <SceneBoundary>
+        <OfficeScene />
+      </SceneBoundary>
       {/* Pemilih 5 preset kamera cinematic (PRD §4.3) — meeting/devOps terjangkau. */}
       <CameraPresets />
       {/* Layout DESIGN.md: kolom kiri — sidebar divisi di atas, floating chat PM

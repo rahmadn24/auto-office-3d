@@ -195,9 +195,13 @@ export class BriefingService {
     const draft = parseBriefDraft(result.text) ?? heuristicBriefDraft(transcript);
 
     const directive = [
-      draft.summary,
+      // Kalimat founder harus jadi leading context: PM node memakainya untuk
+      // nama produk/PRD. Ringkasan boilerplate ("Brief dari diskusi …") ditaruh
+      // di blok metadata di bawah agar tidak ikut menjadi projectName.
+      humanMessages.join(' | ').slice(0, 600),
       '',
       '[Brief Ringkas — hasil Briefing Room]',
+      `- Ringkasan: ${draft.summary}`,
       `- Audience: ${draft.audience}`,
       `- Fitur wajib: ${draft.features.join('; ')}`,
       `- Preset stack: ${draft.preset}`,

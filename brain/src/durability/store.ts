@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 
 import type { EventBus } from '../events';
+import type { ArtifactsPayload } from '../types';
 
 export type RunStatus = 'running' | 'completed' | 'halted' | 'failed' | 'interrupted';
 
@@ -131,6 +132,12 @@ export class RunStore {
       );
       CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events (run_id);
       CREATE INDEX IF NOT EXISTS idx_runs_created ON runs (created_at DESC);
+      CREATE TABLE IF NOT EXISTS run_artifacts (
+        run_id  TEXT PRIMARY KEY,
+        ts      TEXT NOT NULL,
+        payload TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_run_artifacts_ts ON run_artifacts (ts DESC);
     `);
   }
 
@@ -258,6 +265,46 @@ export class RunStore {
   }
 
   /**
+   * Simpan bundel artifact terakhir per run (PRD + files) — durable agar tab
+   * Artifacts tidak kosong setelah daemon restart. `run_events` tetap ringkas
+   * (hanya ringkasan untuk replay), payload penuh tinggal di tabel ini.
+   */
+  saveArtifacts(payload: ArtifactsPayload): void {
+    this.db
+      .prepare(
+        `INSERT INTO run_artifacts (run_id, ts, payload)
+         VALUES (@runId, @ts, @payload)
+         ON CONFLICT(run_id) DO UPDATE SET ts = excluded.ts, payload = excluded.payload`,
+      )
+      .run({
+        runId: payload.runId,
+        ts: payload.timestamp || new Date().toISOString(),
+        payload: JSON.stringify(payload),
+      });
+  }
+
+  /** Artifact run terbaru (boot recovery tab Artifacts). */
+  latestArtifacts(): ArtifactsPayload | null {
+    const row = this.db
+      .prepare('SELECT payload FROM run_artifacts ORDER BY ts DESC LIMIT 1')
+      .get() as { payload: string } | undefined;
+    if (!row) return null;
+    try {
+      const parsed = JSON.parse(row.payload) as ArtifactsPayload;
+      // Artefak lama (sebelum fix safe-buildNode) menyimpan qaPassed=false
+      // padahal summary-nya menyatakan safe-build terverifikasi. Normalisasi
+      // hanya untuk kasus itu; kegagalan QA nyata tetap false.
+      if (!parsed.qaPassed && parsed.qaSummary.startsWith('Safe-build verified')) {
+        parsed.qaPassed = true;
+      }
+      if (parsed.qaSummary.startsWith('Safe-build verified')) parsed.fallback = true;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Boot recovery: run yang tercatat `running` tapi daemon mati ditandai
    * `interrupted` — lalu bisa di-resume lewat `run:resume` (checkpoint SQLite).
    */
@@ -329,7 +376,8 @@ export class RunStore {
           payload: { namespace: p.namespace, topScore: p.topScore, hits: p.hits },
         }),
       ),
-      bus.onArtifacts((p) =>
+      bus.onArtifacts((p) => {
+        this.saveArtifacts(p);
         this.appendEvent({
           runId: p.runId,
           kind: 'artifacts',
@@ -340,8 +388,8 @@ export class RunStore {
             qaPassed: p.qaPassed,
             liveUrl: p.liveUrl,
           },
-        }),
-      ),
+        });
+      }),
       // Fase 11 — handoff Marketer → CS (lead masuk ke mini-CRM).
       bus.onLead((p) =>
         this.appendEvent({

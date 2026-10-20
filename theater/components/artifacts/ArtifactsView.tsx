@@ -492,6 +492,12 @@ function QaPanel({ a }: { a: ArtifactsPayload }): ReactNode {
       <pre className="overflow-x-auto rounded border border-white/6 bg-black/30 p-2 font-mono text-[11px] leading-relaxed text-[#4edea3]">
         {`$ npm run test\n${a.qaSummary}`}
       </pre>
+      {a.fallback && (
+        <p className="rounded border border-[rgba(255,185,95,0.25)] bg-[rgba(255,185,95,0.06)] p-2 font-mono text-[10px] leading-relaxed text-[#ffb95f]">
+          QA gagal {a.cycles}/{a.maxCycles} siklus → graph memakai safe-build generik agar deploy
+          tetap hidup. PRD di kiri tetap sesuai brief; kode bisnis perlu run ulang.
+        </p>
+      )}
       <div className="font-mono text-[10px] uppercase tracking-wide text-[#94a3b8]">
         tokens {formatTokens(a.tokensUsed)} · {formatDuration(a.durationMs)}
       </div>
@@ -506,8 +512,8 @@ function EmptyState(): ReactNode {
         No artifacts yet
       </span>
       <p className="max-w-md font-mono text-[11px] leading-relaxed text-[#475569]">
-        Jalankan satu directive founder (tab Office Theater → RUN DEMO) — PRD, kode, dan QA akan
-        muncul di sini begitu run otonom selesai.
+        Buka Office Theater → ceritakan produk ke PM → tekan GO. PRD, kode, dan QA muncul di sini
+        setelah run otonom selesai.
       </p>
     </div>
   );
@@ -572,6 +578,11 @@ export function ArtifactsView(): ReactNode {
         {qaCount && (
           <span className="rounded-full border border-[rgba(78,222,163,0.4)] bg-[rgba(78,222,163,0.12)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[#4edea3]">
             {qaCount} tests
+          </span>
+        )}
+        {a.fallback && (
+          <span className="rounded-full border border-[rgba(255,185,95,0.4)] bg-[rgba(255,185,95,0.12)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[#ffb95f]">
+            Safe-build fallback
           </span>
         )}
         <span className="font-mono text-[10px] uppercase tracking-wide text-[#475569]">

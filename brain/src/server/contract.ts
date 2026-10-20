@@ -226,6 +226,8 @@ export const ArtifactsSchema = z.object({
   ),
   qaSummary: z.string(),
   qaPassed: z.boolean(),
+  /** QA gagal 5 siklus → safe-build fallback (opsional agar payload lama valid). */
+  fallback: z.boolean().optional(),
   cycles: z.number().nonnegative(),
   maxCycles: z.number().positive(),
   tokensUsed: z.number().nonnegative(),
